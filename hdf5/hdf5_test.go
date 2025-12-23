@@ -1786,6 +1786,122 @@ func TestV0NestedGroupsAndAttributes(t *testing.T) {
 	})
 }
 
+// TestV0DeeplyNested tests deeply nested groups (5+ levels) in v0 superblock files
+func TestV0DeeplyNested(t *testing.T) {
+	path := skipIfNoTestdata(t, "v0_deep_nested.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	// Verify superblock version is 0
+	if f.Version() != 0 {
+		t.Errorf("expected superblock version 0, got %d", f.Version())
+	}
+
+	// Test level 1
+	t.Run("level1", func(t *testing.T) {
+		grp, err := f.OpenGroup("level1")
+		if err != nil {
+			t.Fatalf("OpenGroup level1 failed: %v", err)
+		}
+
+		depthAttr := grp.Attr("depth")
+		if depthAttr == nil {
+			t.Fatal("depth attribute not found on level1")
+		}
+		depth, _ := depthAttr.ReadScalarInt64()
+		if depth != 1 {
+			t.Errorf("level1 depth = %d, want 1", depth)
+		}
+
+		ds, err := grp.OpenDataset("data1")
+		if err != nil {
+			t.Fatalf("OpenDataset data1 failed: %v", err)
+		}
+		data, _ := ds.ReadInt64()
+		if len(data) != 3 || data[0] != 1 {
+			t.Errorf("data1 = %v, want [1 2 3]", data)
+		}
+	})
+
+	// Test level 3
+	t.Run("level3", func(t *testing.T) {
+		grp, err := f.OpenGroup("level1/level2/level3")
+		if err != nil {
+			t.Fatalf("OpenGroup level1/level2/level3 failed: %v", err)
+		}
+
+		depthAttr := grp.Attr("depth")
+		if depthAttr == nil {
+			t.Fatal("depth attribute not found on level3")
+		}
+		depth, _ := depthAttr.ReadScalarInt64()
+		if depth != 3 {
+			t.Errorf("level3 depth = %d, want 3", depth)
+		}
+
+		ds, err := grp.OpenDataset("data3")
+		if err != nil {
+			t.Fatalf("OpenDataset data3 failed: %v", err)
+		}
+		data, _ := ds.ReadInt64()
+		if len(data) != 3 || data[0] != 7 {
+			t.Errorf("data3 = %v, want [7 8 9]", data)
+		}
+	})
+
+	// Test level 5 (deepest)
+	t.Run("level5", func(t *testing.T) {
+		grp, err := f.OpenGroup("level1/level2/level3/level4/level5")
+		if err != nil {
+			t.Fatalf("OpenGroup level5 failed: %v", err)
+		}
+
+		depthAttr := grp.Attr("depth")
+		if depthAttr == nil {
+			t.Fatal("depth attribute not found on level5")
+		}
+		depth, _ := depthAttr.ReadScalarInt64()
+		if depth != 5 {
+			t.Errorf("level5 depth = %d, want 5", depth)
+		}
+
+		ds, err := grp.OpenDataset("data5")
+		if err != nil {
+			t.Fatalf("OpenDataset data5 failed: %v", err)
+		}
+		data, _ := ds.ReadInt64()
+		if len(data) != 3 || data[0] != 13 {
+			t.Errorf("data5 = %v, want [13 14 15]", data)
+		}
+	})
+
+	// Test sibling groups at various levels
+	t.Run("siblings", func(t *testing.T) {
+		for _, path := range []string{"level1/sibling1", "level1/level2/sibling2", "level1/level2/level3/sibling3"} {
+			_, err := f.OpenGroup(path)
+			if err != nil {
+				t.Errorf("OpenGroup %s failed: %v", path, err)
+			}
+		}
+	})
+
+	// Test path-based dataset access
+	t.Run("path_access", func(t *testing.T) {
+		ds, err := f.OpenDataset("level1/level2/level3/level4/level5/data5")
+		if err != nil {
+			t.Fatalf("OpenDataset with full path failed: %v", err)
+		}
+		data, _ := ds.ReadInt64()
+		if len(data) != 3 || data[2] != 15 {
+			t.Errorf("data5 = %v, want [13 14 15]", data)
+		}
+	})
+}
+
 // TestV0AttributesBasic tests basic attribute access in v0 files
 func TestV0AttributesBasic(t *testing.T) {
 	path := skipIfNoTestdata(t, "v0_attributes.h5")

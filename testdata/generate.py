@@ -143,6 +143,38 @@ with create_file_v0('v0_nested_attrs.h5') as f:
     config_ds.attrs['readonly'] = 0
     config_ds.attrs['priority'] = 5
 
+# V0 superblock with deeply nested groups (5 levels)
+with create_file_v0('v0_deep_nested.h5') as f:
+    # Level 1
+    l1 = f.create_group('level1')
+    l1.attrs['depth'] = 1
+    l1.create_dataset('data1', data=np.array([1, 2, 3]))
+
+    # Level 2
+    l2 = l1.create_group('level2')
+    l2.attrs['depth'] = 2
+    l2.create_dataset('data2', data=np.array([4, 5, 6]))
+
+    # Level 3
+    l3 = l2.create_group('level3')
+    l3.attrs['depth'] = 3
+    l3.create_dataset('data3', data=np.array([7, 8, 9]))
+
+    # Level 4
+    l4 = l3.create_group('level4')
+    l4.attrs['depth'] = 4
+    l4.create_dataset('data4', data=np.array([10, 11, 12]))
+
+    # Level 5
+    l5 = l4.create_group('level5')
+    l5.attrs['depth'] = 5
+    l5.create_dataset('data5', data=np.array([13, 14, 15]))
+
+    # Sibling groups at each level
+    l1.create_group('sibling1')
+    l2.create_group('sibling2')
+    l3.create_group('sibling3')
+
 # Compound type attributes
 with create_file('compound_attrs.h5') as f:
     ds = f.create_dataset('data', data=np.array([1, 2, 3]))
@@ -294,6 +326,7 @@ print("  - v0_minimal.h5 (v0 superblock)")
 print("  - v0_integers.h5 (v0 superblock)")
 print("  - v0_attributes.h5 (v0 superblock)")
 print("  - v0_nested_attrs.h5 (v0 superblock with nested groups/datasets/attributes)")
+print("  - v0_deep_nested.h5 (v0 superblock with 5 levels of nesting)")
 print("  - compound_attrs.h5 (compound type attributes)")
 print("  - array_attrs.h5 (array type attributes)")
 print("  - softlink.h5 (soft links)")
