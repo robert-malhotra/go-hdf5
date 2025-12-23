@@ -1436,6 +1436,416 @@ func TestBTreeV2Chunked(t *testing.T) {
 	}
 }
 
+// TestV0NestedGroupsAndAttributes comprehensively tests attribute access
+// from nested datasets and groups in superblock version 0 files.
+func TestV0NestedGroupsAndAttributes(t *testing.T) {
+	path := skipIfNoTestdata(t, "v0_nested_attrs.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	// Verify superblock version is 0
+	if f.Version() != 0 {
+		t.Errorf("expected superblock version 0, got %d", f.Version())
+	}
+
+	// === ROOT LEVEL ATTRIBUTES ===
+	t.Run("root_attributes", func(t *testing.T) {
+		root := f.Root()
+		attrs := root.Attrs()
+		if len(attrs) < 2 {
+			t.Errorf("expected at least 2 root attributes, got %d: %v", len(attrs), attrs)
+		}
+
+		// Test file_version attribute
+		versionAttr := root.Attr("file_version")
+		if versionAttr == nil {
+			t.Fatal("file_version attribute not found on root")
+		}
+		version, err := versionAttr.ReadScalarInt64()
+		if err != nil {
+			t.Fatalf("ReadScalarInt64 failed: %v", err)
+		}
+		if version != 1 {
+			t.Errorf("file_version = %d, want 1", version)
+		}
+
+		// Test file_description attribute
+		descAttr := root.Attr("file_description")
+		if descAttr == nil {
+			t.Fatal("file_description attribute not found on root")
+		}
+		desc, err := descAttr.ReadScalarString()
+		if err != nil {
+			t.Fatalf("ReadScalarString failed: %v", err)
+		}
+		if desc != "Test file for nested attributes" {
+			t.Errorf("file_description = %q, want %q", desc, "Test file for nested attributes")
+		}
+	})
+
+	// === LEVEL 1 GROUP ATTRIBUTES ===
+	t.Run("level1_group_attributes", func(t *testing.T) {
+		grp, err := f.OpenGroup("sensors")
+		if err != nil {
+			t.Fatalf("OpenGroup sensors failed: %v", err)
+		}
+
+		// Check group attributes
+		attrs := grp.Attrs()
+		if len(attrs) < 2 {
+			t.Errorf("expected at least 2 group attributes, got %d: %v", len(attrs), attrs)
+		}
+
+		// Test sensor_count attribute
+		countAttr := grp.Attr("sensor_count")
+		if countAttr == nil {
+			t.Fatal("sensor_count attribute not found")
+		}
+		count, err := countAttr.ReadScalarInt64()
+		if err != nil {
+			t.Fatalf("ReadScalarInt64 failed: %v", err)
+		}
+		if count != 3 {
+			t.Errorf("sensor_count = %d, want 3", count)
+		}
+
+		// Test location attribute
+		locAttr := grp.Attr("location")
+		if locAttr == nil {
+			t.Fatal("location attribute not found")
+		}
+		loc, err := locAttr.ReadScalarString()
+		if err != nil {
+			t.Fatalf("ReadScalarString failed: %v", err)
+		}
+		if loc != "building_a" {
+			t.Errorf("location = %q, want %q", loc, "building_a")
+		}
+	})
+
+	// === LEVEL 1 DATASET ATTRIBUTES ===
+	t.Run("level1_dataset_attributes", func(t *testing.T) {
+		ds, err := f.OpenDataset("sensors/temperature")
+		if err != nil {
+			t.Fatalf("OpenDataset sensors/temperature failed: %v", err)
+		}
+
+		// Verify data first
+		data, err := ds.ReadFloat64()
+		if err != nil {
+			t.Fatalf("ReadFloat64 failed: %v", err)
+		}
+		expected := []float64{22.5, 23.1, 22.8, 23.5, 24.0}
+		if len(data) != len(expected) {
+			t.Fatalf("expected %d values, got %d", len(expected), len(data))
+		}
+		for i, v := range expected {
+			if data[i] != v {
+				t.Errorf("data[%d] = %f, want %f", i, data[i], v)
+			}
+		}
+
+		// Check attributes exist
+		attrs := ds.Attrs()
+		if len(attrs) < 4 {
+			t.Errorf("expected at least 4 dataset attributes, got %d: %v", len(attrs), attrs)
+		}
+
+		// Test units attribute
+		unitsAttr := ds.Attr("units")
+		if unitsAttr == nil {
+			t.Fatal("units attribute not found")
+		}
+		units, err := unitsAttr.ReadScalarString()
+		if err != nil {
+			t.Fatalf("ReadScalarString failed: %v", err)
+		}
+		if units != "celsius" {
+			t.Errorf("units = %q, want %q", units, "celsius")
+		}
+
+		// Test min_value attribute
+		minAttr := ds.Attr("min_value")
+		if minAttr == nil {
+			t.Fatal("min_value attribute not found")
+		}
+		minVal, err := minAttr.ReadScalarFloat64()
+		if err != nil {
+			t.Fatalf("ReadScalarFloat64 failed: %v", err)
+		}
+		if minVal != 22.5 {
+			t.Errorf("min_value = %f, want 22.5", minVal)
+		}
+
+		// Test max_value attribute
+		maxAttr := ds.Attr("max_value")
+		if maxAttr == nil {
+			t.Fatal("max_value attribute not found")
+		}
+		maxVal, err := maxAttr.ReadScalarFloat64()
+		if err != nil {
+			t.Fatalf("ReadScalarFloat64 failed: %v", err)
+		}
+		if maxVal != 24.0 {
+			t.Errorf("max_value = %f, want 24.0", maxVal)
+		}
+	})
+
+	// === ANOTHER LEVEL 1 DATASET ===
+	t.Run("level1_another_dataset", func(t *testing.T) {
+		ds, err := f.OpenDataset("sensors/humidity")
+		if err != nil {
+			t.Fatalf("OpenDataset sensors/humidity failed: %v", err)
+		}
+
+		// Verify data
+		data, err := ds.ReadInt32()
+		if err != nil {
+			t.Fatalf("ReadInt32 failed: %v", err)
+		}
+		expected := []int32{45, 48, 52, 50, 47}
+		for i, v := range expected {
+			if data[i] != v {
+				t.Errorf("data[%d] = %d, want %d", i, data[i], v)
+			}
+		}
+
+		// Test sensor_id attribute
+		idAttr := ds.Attr("sensor_id")
+		if idAttr == nil {
+			t.Fatal("sensor_id attribute not found")
+		}
+		id, err := idAttr.ReadScalarInt64()
+		if err != nil {
+			t.Fatalf("ReadScalarInt64 failed: %v", err)
+		}
+		if id != 101 {
+			t.Errorf("sensor_id = %d, want 101", id)
+		}
+	})
+
+	// === LEVEL 2 NESTED GROUP ATTRIBUTES ===
+	t.Run("level2_group_attributes", func(t *testing.T) {
+		grp, err := f.OpenGroup("sensors/metadata")
+		if err != nil {
+			t.Fatalf("OpenGroup sensors/metadata failed: %v", err)
+		}
+
+		// Test created_by attribute
+		createdByAttr := grp.Attr("created_by")
+		if createdByAttr == nil {
+			t.Fatal("created_by attribute not found")
+		}
+		createdBy, err := createdByAttr.ReadScalarString()
+		if err != nil {
+			t.Fatalf("ReadScalarString failed: %v", err)
+		}
+		if createdBy != "test_generator" {
+			t.Errorf("created_by = %q, want %q", createdBy, "test_generator")
+		}
+
+		// Test version attribute
+		versionAttr := grp.Attr("version")
+		if versionAttr == nil {
+			t.Fatal("version attribute not found")
+		}
+		version, err := versionAttr.ReadScalarInt64()
+		if err != nil {
+			t.Fatalf("ReadScalarInt64 failed: %v", err)
+		}
+		if version != 2 {
+			t.Errorf("version = %d, want 2", version)
+		}
+	})
+
+	// === LEVEL 2 NESTED DATASET ATTRIBUTES ===
+	t.Run("level2_dataset_attributes", func(t *testing.T) {
+		ds, err := f.OpenDataset("sensors/metadata/timestamps")
+		if err != nil {
+			t.Fatalf("OpenDataset sensors/metadata/timestamps failed: %v", err)
+		}
+
+		// Verify data
+		data, err := ds.ReadInt64()
+		if err != nil {
+			t.Fatalf("ReadInt64 failed: %v", err)
+		}
+		expected := []int64{1000, 2000, 3000, 4000, 5000}
+		for i, v := range expected {
+			if data[i] != v {
+				t.Errorf("data[%d] = %d, want %d", i, data[i], v)
+			}
+		}
+
+		// Test timezone attribute
+		tzAttr := ds.Attr("timezone")
+		if tzAttr == nil {
+			t.Fatal("timezone attribute not found")
+		}
+		tz, err := tzAttr.ReadScalarString()
+		if err != nil {
+			t.Fatalf("ReadScalarString failed: %v", err)
+		}
+		if tz != "UTC" {
+			t.Errorf("timezone = %q, want %q", tz, "UTC")
+		}
+
+		// Test epoch attribute
+		epochAttr := ds.Attr("epoch")
+		if epochAttr == nil {
+			t.Fatal("epoch attribute not found")
+		}
+		epoch, err := epochAttr.ReadScalarInt64()
+		if err != nil {
+			t.Fatalf("ReadScalarInt64 failed: %v", err)
+		}
+		if epoch != 1704067200 {
+			t.Errorf("epoch = %d, want 1704067200", epoch)
+		}
+	})
+
+	// === SECOND TOP-LEVEL GROUP ===
+	t.Run("second_group_attributes", func(t *testing.T) {
+		grp, err := f.OpenGroup("config")
+		if err != nil {
+			t.Fatalf("OpenGroup config failed: %v", err)
+		}
+
+		// Test active attribute
+		activeAttr := grp.Attr("active")
+		if activeAttr == nil {
+			t.Fatal("active attribute not found")
+		}
+		active, err := activeAttr.ReadScalarInt64()
+		if err != nil {
+			t.Fatalf("ReadScalarInt64 failed: %v", err)
+		}
+		if active != 1 {
+			t.Errorf("active = %d, want 1", active)
+		}
+
+		// Test dataset in this group
+		ds, err := grp.OpenDataset("settings")
+		if err != nil {
+			t.Fatalf("OpenDataset settings failed: %v", err)
+		}
+
+		priorityAttr := ds.Attr("priority")
+		if priorityAttr == nil {
+			t.Fatal("priority attribute not found")
+		}
+		priority, err := priorityAttr.ReadScalarInt64()
+		if err != nil {
+			t.Fatalf("ReadScalarInt64 failed: %v", err)
+		}
+		if priority != 5 {
+			t.Errorf("priority = %d, want 5", priority)
+		}
+	})
+
+	// === FILE.GetAttr API FOR V0 ===
+	t.Run("getattr_api", func(t *testing.T) {
+		// Test GetAttr on nested dataset
+		attr, err := f.GetAttr("/sensors/temperature@units")
+		if err != nil {
+			t.Fatalf("GetAttr failed: %v", err)
+		}
+		units, err := attr.ReadScalarString()
+		if err != nil {
+			t.Fatalf("ReadScalarString failed: %v", err)
+		}
+		if units != "celsius" {
+			t.Errorf("units = %q, want %q", units, "celsius")
+		}
+
+		// Test ReadAttr convenience method
+		val, err := f.ReadAttr("/sensors/humidity@sensor_id")
+		if err != nil {
+			t.Fatalf("ReadAttr failed: %v", err)
+		}
+		if id, ok := val.(int64); !ok || id != 101 {
+			t.Errorf("sensor_id = %v, want 101", val)
+		}
+
+		// Test deeply nested
+		attr, err = f.GetAttr("/sensors/metadata/timestamps@timezone")
+		if err != nil {
+			t.Fatalf("GetAttr for nested path failed: %v", err)
+		}
+		tz, err := attr.ReadScalarString()
+		if err != nil {
+			t.Fatalf("ReadScalarString failed: %v", err)
+		}
+		if tz != "UTC" {
+			t.Errorf("timezone = %q, want %q", tz, "UTC")
+		}
+	})
+}
+
+// TestV0AttributesBasic tests basic attribute access in v0 files
+func TestV0AttributesBasic(t *testing.T) {
+	path := skipIfNoTestdata(t, "v0_attributes.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	// Verify superblock version is 0
+	if f.Version() != 0 {
+		t.Errorf("expected superblock version 0, got %d", f.Version())
+	}
+
+	ds, err := f.OpenDataset("data")
+	if err != nil {
+		t.Fatalf("OpenDataset failed: %v", err)
+	}
+
+	// Test int attribute
+	intAttr := ds.Attr("int_attr")
+	if intAttr == nil {
+		t.Fatal("int_attr not found")
+	}
+	intVal, err := intAttr.ReadScalarInt64()
+	if err != nil {
+		t.Fatalf("ReadScalarInt64 failed: %v", err)
+	}
+	if intVal != 42 {
+		t.Errorf("int_attr = %d, want 42", intVal)
+	}
+
+	// Test float attribute
+	floatAttr := ds.Attr("float_attr")
+	if floatAttr == nil {
+		t.Fatal("float_attr not found")
+	}
+	floatVal, err := floatAttr.ReadScalarFloat64()
+	if err != nil {
+		t.Fatalf("ReadScalarFloat64 failed: %v", err)
+	}
+	if floatVal != 3.14 {
+		t.Errorf("float_attr = %f, want 3.14", floatVal)
+	}
+
+	// Test string attribute
+	strAttr := ds.Attr("string_attr")
+	if strAttr == nil {
+		t.Fatal("string_attr not found")
+	}
+	strVal, err := strAttr.ReadScalarString()
+	if err != nil {
+		t.Fatalf("ReadScalarString failed: %v", err)
+	}
+	if strVal != "hello" {
+		t.Errorf("string_attr = %q, want %q", strVal, "hello")
+	}
+}
+
 // TestBTreeV2Compressed tests reading a compressed dataset with B-tree v2
 func TestBTreeV2Compressed(t *testing.T) {
 	path := skipIfNoTestdata(t, "btree_v2_compressed.h5")
