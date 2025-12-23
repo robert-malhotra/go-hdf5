@@ -59,6 +59,8 @@ type Superblock struct {
 	IndexedStorageK       uint16 // 1/2 rank of B-tree nodes for indexed storage (v1 only)
 	FreeSpaceManagerVersion uint8  // (v0/v1 only)
 	RootGroupSymbolTableAddress uint64 // Address of root group symbol table entry (v0/v1)
+	RootGroupBTreeAddress       uint64 // B-tree address from root group scratch pad (v0/v1)
+	RootGroupLocalHeapAddress   uint64 // Local heap address from root group scratch pad (v0/v1)
 
 	// Computed/derived fields
 	ByteOrder binary.ByteOrder // Always little-endian for HDF5

@@ -159,18 +159,18 @@ func readV1Continuation(r *binary.Reader, offset, length uint64) ([]message.Mess
 
 		// Handle nested continuation messages recursively
 		if message.Type(msgType) == message.TypeObjectHeaderContinuation {
-			contMsg, err := message.ParseContinuation(data, r)
+			contMsg, err := message.ParseContinuation(data, cr)
 			if err != nil {
 				continue
 			}
-			nestedMsgs, err := readV1Continuation(r, contMsg.Offset, contMsg.Length)
+			nestedMsgs, err := readV1Continuation(cr, contMsg.Offset, contMsg.Length)
 			if err == nil {
 				messages = append(messages, nestedMsgs...)
 			}
 			continue
 		}
 
-		msg, err := message.Parse(message.Type(msgType), data, flags, r)
+		msg, err := message.Parse(message.Type(msgType), data, flags, cr)
 		if err != nil {
 			continue
 		}

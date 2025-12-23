@@ -91,6 +91,31 @@ func readV0(r io.ReaderAt, offset int64) (*Superblock, error) {
 	}
 	sb.RootGroupAddress = decodeUint(addrBuf, osize)
 	sb.RootGroupSymbolTableAddress = sb.RootGroupAddress
+	pos += int64(osize)
+
+	// Read cache type (4 bytes)
+	cacheTypeBuf := make([]byte, 4)
+	if _, err := r.ReadAt(cacheTypeBuf, pos); err != nil {
+		return nil, err
+	}
+	cacheType := decodeUint(cacheTypeBuf, 4)
+	pos += 8 // Skip cache type (4) + reserved (4)
+
+	// If cache type is 1 (group), read B-tree and local heap addresses from scratch pad
+	if cacheType == 1 {
+		// B-tree address
+		if _, err := r.ReadAt(addrBuf, pos); err != nil {
+			return nil, err
+		}
+		sb.RootGroupBTreeAddress = decodeUint(addrBuf, osize)
+		pos += int64(osize)
+
+		// Local heap address
+		if _, err := r.ReadAt(addrBuf, pos); err != nil {
+			return nil, err
+		}
+		sb.RootGroupLocalHeapAddress = decodeUint(addrBuf, osize)
+	}
 
 	return sb, nil
 }
@@ -156,6 +181,31 @@ func readV1(r io.ReaderAt, offset int64) (*Superblock, error) {
 	}
 	sb.RootGroupAddress = decodeUint(addrBuf, osize)
 	sb.RootGroupSymbolTableAddress = sb.RootGroupAddress
+	pos += int64(osize)
+
+	// Read cache type (4 bytes)
+	cacheTypeBuf := make([]byte, 4)
+	if _, err := r.ReadAt(cacheTypeBuf, pos); err != nil {
+		return nil, err
+	}
+	cacheType := decodeUint(cacheTypeBuf, 4)
+	pos += 8 // Skip cache type (4) + reserved (4)
+
+	// If cache type is 1 (group), read B-tree and local heap addresses from scratch pad
+	if cacheType == 1 {
+		// B-tree address
+		if _, err := r.ReadAt(addrBuf, pos); err != nil {
+			return nil, err
+		}
+		sb.RootGroupBTreeAddress = decodeUint(addrBuf, osize)
+		pos += int64(osize)
+
+		// Local heap address
+		if _, err := r.ReadAt(addrBuf, pos); err != nil {
+			return nil, err
+		}
+		sb.RootGroupLocalHeapAddress = decodeUint(addrBuf, osize)
+	}
 
 	return sb, nil
 }

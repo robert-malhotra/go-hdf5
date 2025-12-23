@@ -139,6 +139,15 @@ func (g *Group) findChildFull(name string, visited map[string]bool) (*linkResolu
 		return g.findChildV1Full(name, symTable, visited)
 	}
 
+	// Fallback for root group: use cached addresses from superblock scratch pad
+	if g.path == "/" && g.file.superblock.RootGroupBTreeAddress != 0 {
+		symTable := &message.SymbolTable{
+			BTreeAddress:     g.file.superblock.RootGroupBTreeAddress,
+			LocalHeapAddress: g.file.superblock.RootGroupLocalHeapAddress,
+		}
+		return g.findChildV1Full(name, symTable, visited)
+	}
+
 	return nil, ErrNotFound
 }
 
@@ -278,6 +287,19 @@ func (g *Group) Members() ([]string, error) {
 		symMsg := g.header.GetMessage(message.TypeSymbolTable)
 		if symMsg != nil {
 			symTable := symMsg.(*message.SymbolTable)
+			entries, err := g.getMembersV1(symTable)
+			if err != nil {
+				return nil, err
+			}
+			for _, entry := range entries {
+				names = append(names, entry.Name)
+			}
+		} else if g.path == "/" && g.file.superblock.RootGroupBTreeAddress != 0 {
+			// Fallback for root group: use cached addresses from superblock scratch pad
+			symTable := &message.SymbolTable{
+				BTreeAddress:     g.file.superblock.RootGroupBTreeAddress,
+				LocalHeapAddress: g.file.superblock.RootGroupLocalHeapAddress,
+			}
 			entries, err := g.getMembersV1(symTable)
 			if err != nil {
 				return nil, err
