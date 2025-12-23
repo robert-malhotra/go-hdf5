@@ -100,6 +100,49 @@ with create_file_v0('v0_attributes.h5') as f:
     ds.attrs['float_attr'] = 3.14
     ds.attrs['string_attr'] = 'hello'
 
+# V0 superblock with nested groups, datasets, and attributes
+with create_file_v0('v0_nested_attrs.h5') as f:
+    # Root-level attributes
+    f.attrs['file_version'] = 1
+    f.attrs['file_description'] = 'Test file for nested attributes'
+
+    # Level 1 group with attributes
+    grp1 = f.create_group('sensors')
+    grp1.attrs['sensor_count'] = 3
+    grp1.attrs['location'] = 'building_a'
+
+    # Dataset in level 1 group with attributes
+    temp_data = np.array([22.5, 23.1, 22.8, 23.5, 24.0], dtype=np.float64)
+    temp_ds = grp1.create_dataset('temperature', data=temp_data)
+    temp_ds.attrs['units'] = 'celsius'
+    temp_ds.attrs['calibration_date'] = '2024-01-15'
+    temp_ds.attrs['min_value'] = 22.5
+    temp_ds.attrs['max_value'] = 24.0
+
+    # Another dataset in level 1 group
+    humidity_data = np.array([45, 48, 52, 50, 47], dtype=np.int32)
+    humidity_ds = grp1.create_dataset('humidity', data=humidity_data)
+    humidity_ds.attrs['units'] = 'percent'
+    humidity_ds.attrs['sensor_id'] = 101
+
+    # Level 2 nested group with attributes
+    subgrp = grp1.create_group('metadata')
+    subgrp.attrs['created_by'] = 'test_generator'
+    subgrp.attrs['version'] = 2
+
+    # Dataset in level 2 group with attributes
+    timestamps = np.array([1000, 2000, 3000, 4000, 5000], dtype=np.int64)
+    ts_ds = subgrp.create_dataset('timestamps', data=timestamps)
+    ts_ds.attrs['timezone'] = 'UTC'
+    ts_ds.attrs['epoch'] = 1704067200
+
+    # Second level 1 group
+    grp2 = f.create_group('config')
+    grp2.attrs['active'] = 1
+    config_ds = grp2.create_dataset('settings', data=np.array([1, 2, 3, 4], dtype=np.int32))
+    config_ds.attrs['readonly'] = 0
+    config_ds.attrs['priority'] = 5
+
 # Compound type attributes
 with create_file('compound_attrs.h5') as f:
     ds = f.create_dataset('data', data=np.array([1, 2, 3]))
@@ -250,6 +293,7 @@ print("  - varlen_attrs.h5 (variable-length string attributes)")
 print("  - v0_minimal.h5 (v0 superblock)")
 print("  - v0_integers.h5 (v0 superblock)")
 print("  - v0_attributes.h5 (v0 superblock)")
+print("  - v0_nested_attrs.h5 (v0 superblock with nested groups/datasets/attributes)")
 print("  - compound_attrs.h5 (compound type attributes)")
 print("  - array_attrs.h5 (array type attributes)")
 print("  - softlink.h5 (soft links)")
