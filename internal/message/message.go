@@ -7,7 +7,7 @@ package message
 import (
 	"fmt"
 
-	"github.com/rkm/go-hdf5/internal/binary"
+	"github.com/robert-malhotra/go-hdf5/internal/binary"
 )
 
 // Type represents an HDF5 header message type.

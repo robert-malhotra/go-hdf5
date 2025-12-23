@@ -8,8 +8,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/rkm/go-hdf5/internal/binary"
-	"github.com/rkm/go-hdf5/internal/message"
+	"github.com/robert-malhotra/go-hdf5/internal/binary"
+	"github.com/robert-malhotra/go-hdf5/internal/message"
 )
 
 // Object header signatures

@@ -5,7 +5,7 @@ A pure Go library for reading HDF5 files. No CGO or external dependencies requir
 ## Installation
 
 ```bash
-go get github.com/rkm/go-hdf5
+go get github.com/robert-malhotra/go-hdf5
 ```
 
 ## Quick Start
@@ -17,7 +17,7 @@ import (
     "fmt"
     "log"
 
-    "github.com/rkm/go-hdf5/hdf5"
+    "github.com/robert-malhotra/go-hdf5/hdf5"
 )
 
 func main() {

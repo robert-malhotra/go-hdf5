@@ -3,7 +3,7 @@ package message
 import (
 	"fmt"
 
-	binpkg "github.com/rkm/go-hdf5/internal/binary"
+	binpkg "github.com/robert-malhotra/go-hdf5/internal/binary"
 )
 
 // SymbolTable represents a symbol table message (type 0x0011).

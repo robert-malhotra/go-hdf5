@@ -5,10 +5,10 @@ import (
 	"path"
 	"reflect"
 
-	"github.com/rkm/go-hdf5/internal/dtype"
-	"github.com/rkm/go-hdf5/internal/layout"
-	"github.com/rkm/go-hdf5/internal/message"
-	"github.com/rkm/go-hdf5/internal/object"
+	"github.com/robert-malhotra/go-hdf5/internal/dtype"
+	"github.com/robert-malhotra/go-hdf5/internal/layout"
+	"github.com/robert-malhotra/go-hdf5/internal/message"
+	"github.com/robert-malhotra/go-hdf5/internal/object"
 )
 
 // Dataset represents an HDF5 dataset.

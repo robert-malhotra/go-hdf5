@@ -1,3 +1,3 @@
-module github.com/rkm/go-hdf5
+module github.com/robert-malhotra/go-hdf5
 
 go 1.25

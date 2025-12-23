@@ -6,9 +6,9 @@ import (
 	"reflect"
 	"unsafe"
 
-	"github.com/rkm/go-hdf5/internal/binary"
-	"github.com/rkm/go-hdf5/internal/heap"
-	"github.com/rkm/go-hdf5/internal/message"
+	"github.com/robert-malhotra/go-hdf5/internal/binary"
+	"github.com/robert-malhotra/go-hdf5/internal/heap"
+	"github.com/robert-malhotra/go-hdf5/internal/message"
 )
 
 // Convert converts raw HDF5 data to Go values.

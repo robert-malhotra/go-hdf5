@@ -3,7 +3,7 @@ package heap
 import (
 	"fmt"
 
-	"github.com/rkm/go-hdf5/internal/binary"
+	"github.com/robert-malhotra/go-hdf5/internal/binary"
 )
 
 // GlobalHeap represents an HDF5 global heap collection.

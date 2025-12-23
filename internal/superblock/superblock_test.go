@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"testing"
 
-	binpkg "github.com/rkm/go-hdf5/internal/binary"
+	binpkg "github.com/robert-malhotra/go-hdf5/internal/binary"
 )
 
 // bytesReaderAt wraps a byte slice to implement io.ReaderAt.

@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/rkm/go-hdf5/internal/message"
+	"github.com/robert-malhotra/go-hdf5/internal/message"
 )
 
 func TestGoTypeFixedPoint(t *testing.T) {

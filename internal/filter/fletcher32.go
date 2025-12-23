@@ -4,8 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	binpkg "github.com/rkm/go-hdf5/internal/binary"
-	"github.com/rkm/go-hdf5/internal/message"
+	binpkg "github.com/robert-malhotra/go-hdf5/internal/binary"
+	"github.com/robert-malhotra/go-hdf5/internal/message"
 )
 
 // Fletcher32Filter implements the Fletcher-32 checksum filter.

@@ -7,7 +7,7 @@ package filter
 import (
 	"fmt"
 
-	"github.com/rkm/go-hdf5/internal/message"
+	"github.com/robert-malhotra/go-hdf5/internal/message"
 )
 
 // Filter is the interface implemented by all HDF5 filters.

@@ -3,7 +3,7 @@ package btree
 import (
 	"fmt"
 
-	"github.com/rkm/go-hdf5/internal/binary"
+	"github.com/robert-malhotra/go-hdf5/internal/binary"
 )
 
 // B-tree v2 types for chunked storage

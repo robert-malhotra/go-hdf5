@@ -4,8 +4,8 @@ package btree
 import (
 	"fmt"
 
-	"github.com/rkm/go-hdf5/internal/binary"
-	"github.com/rkm/go-hdf5/internal/heap"
+	"github.com/robert-malhotra/go-hdf5/internal/binary"
+	"github.com/robert-malhotra/go-hdf5/internal/heap"
 )
 
 // GroupEntry represents an entry in a v1 group B-tree.
