@@ -3,7 +3,7 @@ package superblock
 import (
 	"io"
 
-	binpkg "github.com/rkm/go-hdf5/internal/binary"
+	binpkg "github.com/robert-malhotra/go-hdf5/internal/binary"
 )
 
 /*

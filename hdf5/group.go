@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/rkm/go-hdf5/internal/btree"
-	"github.com/rkm/go-hdf5/internal/heap"
-	"github.com/rkm/go-hdf5/internal/message"
-	"github.com/rkm/go-hdf5/internal/object"
+	"github.com/robert-malhotra/go-hdf5/internal/btree"
+	"github.com/robert-malhotra/go-hdf5/internal/heap"
+	"github.com/robert-malhotra/go-hdf5/internal/message"
+	"github.com/robert-malhotra/go-hdf5/internal/object"
 )
 
 // Group represents an HDF5 group.

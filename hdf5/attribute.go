@@ -3,9 +3,9 @@ package hdf5
 import (
 	"fmt"
 
-	"github.com/rkm/go-hdf5/internal/binary"
-	"github.com/rkm/go-hdf5/internal/dtype"
-	"github.com/rkm/go-hdf5/internal/message"
+	"github.com/robert-malhotra/go-hdf5/internal/binary"
+	"github.com/robert-malhotra/go-hdf5/internal/dtype"
+	"github.com/robert-malhotra/go-hdf5/internal/message"
 )
 
 // Attribute represents an HDF5 attribute attached to a dataset or group.

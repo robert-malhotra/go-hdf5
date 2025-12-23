@@ -9,7 +9,7 @@ import (
 	"errors"
 	"io"
 
-	binpkg "github.com/rkm/go-hdf5/internal/binary"
+	binpkg "github.com/robert-malhotra/go-hdf5/internal/binary"
 )
 
 // HDF5 file signature: 0x89 H D F \r \n 0x1a \n

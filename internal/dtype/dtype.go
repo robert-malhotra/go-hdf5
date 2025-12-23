@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/rkm/go-hdf5/internal/message"
+	"github.com/robert-malhotra/go-hdf5/internal/message"
 )
 
 // GoType returns the Go reflect.Type that corresponds to the given HDF5 datatype.

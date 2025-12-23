@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	binpkg "github.com/rkm/go-hdf5/internal/binary"
+	binpkg "github.com/robert-malhotra/go-hdf5/internal/binary"
 )
 
 // DatatypeClass represents the class of an HDF5 datatype.

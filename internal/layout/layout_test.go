@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/rkm/go-hdf5/internal/binary"
-	"github.com/rkm/go-hdf5/internal/message"
+	"github.com/robert-malhotra/go-hdf5/internal/binary"
+	"github.com/robert-malhotra/go-hdf5/internal/message"
 )
 
 type bytesReaderAt []byte

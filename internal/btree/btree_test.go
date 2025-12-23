@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/rkm/go-hdf5/internal/binary"
+	"github.com/robert-malhotra/go-hdf5/internal/binary"
 )
 
 func TestChunkIndexFindChunk(t *testing.T) {

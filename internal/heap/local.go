@@ -4,7 +4,7 @@ package heap
 import (
 	"fmt"
 
-	"github.com/rkm/go-hdf5/internal/binary"
+	"github.com/robert-malhotra/go-hdf5/internal/binary"
 )
 
 // LocalHeap represents an HDF5 local heap for storing variable-length data

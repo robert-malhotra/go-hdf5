@@ -1,7 +1,7 @@
 package layout
 
 import (
-	"github.com/rkm/go-hdf5/internal/message"
+	"github.com/robert-malhotra/go-hdf5/internal/message"
 )
 
 // Compact represents compact storage layout.

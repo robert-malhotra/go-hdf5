@@ -3,7 +3,7 @@ package filter
 import (
 	"fmt"
 
-	"github.com/rkm/go-hdf5/internal/message"
+	"github.com/robert-malhotra/go-hdf5/internal/message"
 )
 
 // Pipeline represents a filter pipeline that can decode chunk data.

@@ -1,7 +1,7 @@
 package filter
 
 import (
-	"github.com/rkm/go-hdf5/internal/message"
+	"github.com/robert-malhotra/go-hdf5/internal/message"
 )
 
 // Shuffle implements the byte shuffle filter.

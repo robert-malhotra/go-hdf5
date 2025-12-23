@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/rkm/go-hdf5/internal/binary"
-	"github.com/rkm/go-hdf5/internal/object"
-	"github.com/rkm/go-hdf5/internal/superblock"
+	"github.com/robert-malhotra/go-hdf5/internal/binary"
+	"github.com/robert-malhotra/go-hdf5/internal/object"
+	"github.com/robert-malhotra/go-hdf5/internal/superblock"
 )
 
 // File represents an open HDF5 file.
