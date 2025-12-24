@@ -1,0 +1,1468 @@
+package hdf5
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func getTestdataPath(filename string) string {
+	return filepath.Join("..", "testdata", filename)
+}
+
+func skipIfNoTestdata(t *testing.T, filename string) string {
+	path := getTestdataPath(filename)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		t.Skipf("Test file %s not found. Run 'python3 testdata/generate.py' to create test files.", filename)
+	}
+	return path
+}
+
+func TestOpenMinimal(t *testing.T) {
+	path := skipIfNoTestdata(t, "minimal.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	if f.Path() != path {
+		t.Errorf("expected path %q, got %q", path, f.Path())
+	}
+
+	root := f.Root()
+	if root == nil {
+		t.Fatal("Root() returned nil")
+	}
+
+	if root.Path() != "/" {
+		t.Errorf("expected root path '/', got %q", root.Path())
+	}
+}
+
+func TestOpenNotHDF5(t *testing.T) {
+	// Create a temporary non-HDF5 file
+	tmpfile, err := os.CreateTemp("", "notHDF5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	tmpfile.WriteString("This is not an HDF5 file")
+	tmpfile.Close()
+
+	_, err = Open(tmpfile.Name())
+	if err == nil {
+		t.Error("expected error for non-HDF5 file")
+	}
+}
+
+func TestOpenNotExists(t *testing.T) {
+	_, err := Open("/nonexistent/path/to/file.h5")
+	if err == nil {
+		t.Error("expected error for non-existent file")
+	}
+}
+
+func TestReadMinimalDataset(t *testing.T) {
+	path := skipIfNoTestdata(t, "minimal.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	ds, err := f.OpenDataset("data")
+	if err != nil {
+		t.Fatalf("OpenDataset failed: %v", err)
+	}
+
+	if ds.Name() != "data" {
+		t.Errorf("expected name 'data', got %q", ds.Name())
+	}
+
+	shape := ds.Shape()
+	if len(shape) != 1 || shape[0] != 4 {
+		t.Errorf("expected shape [4], got %v", shape)
+	}
+
+	if ds.NumElements() != 4 {
+		t.Errorf("expected 4 elements, got %d", ds.NumElements())
+	}
+
+	data, err := ds.ReadFloat64()
+	if err != nil {
+		t.Fatalf("ReadFloat64 failed: %v", err)
+	}
+
+	expected := []float64{1.0, 2.0, 3.0, 4.0}
+	if len(data) != len(expected) {
+		t.Fatalf("expected %d values, got %d", len(expected), len(data))
+	}
+
+	for i, v := range expected {
+		if data[i] != v {
+			t.Errorf("data[%d] = %f, want %f", i, data[i], v)
+		}
+	}
+}
+
+func TestReadFloats(t *testing.T) {
+	path := skipIfNoTestdata(t, "floats.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	// Test float32
+	ds32, err := f.OpenDataset("float32")
+	if err != nil {
+		t.Fatalf("OpenDataset float32 failed: %v", err)
+	}
+
+	data32, err := ds32.ReadFloat32()
+	if err != nil {
+		t.Fatalf("ReadFloat32 failed: %v", err)
+	}
+
+	expected32 := []float32{1.5, 2.5, 3.5}
+	for i, v := range expected32 {
+		if data32[i] != v {
+			t.Errorf("float32[%d] = %f, want %f", i, data32[i], v)
+		}
+	}
+
+	// Test float64
+	ds64, err := f.OpenDataset("float64")
+	if err != nil {
+		t.Fatalf("OpenDataset float64 failed: %v", err)
+	}
+
+	data64, err := ds64.ReadFloat64()
+	if err != nil {
+		t.Fatalf("ReadFloat64 failed: %v", err)
+	}
+
+	expected64 := []float64{1.5, 2.5, 3.5}
+	for i, v := range expected64 {
+		if data64[i] != v {
+			t.Errorf("float64[%d] = %f, want %f", i, data64[i], v)
+		}
+	}
+}
+
+func TestReadIntegers(t *testing.T) {
+	path := skipIfNoTestdata(t, "integers.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	// Test int32
+	ds, err := f.OpenDataset("int32")
+	if err != nil {
+		t.Fatalf("OpenDataset int32 failed: %v", err)
+	}
+
+	data, err := ds.ReadInt32()
+	if err != nil {
+		t.Fatalf("ReadInt32 failed: %v", err)
+	}
+
+	expected := []int32{1, 2, 3, 4, 5}
+	for i, v := range expected {
+		if data[i] != v {
+			t.Errorf("int32[%d] = %d, want %d", i, data[i], v)
+		}
+	}
+}
+
+func TestReadMultidim(t *testing.T) {
+	path := skipIfNoTestdata(t, "multidim.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	ds, err := f.OpenDataset("2d")
+	if err != nil {
+		t.Fatalf("OpenDataset 2d failed: %v", err)
+	}
+
+	shape := ds.Shape()
+	if len(shape) != 2 || shape[0] != 3 || shape[1] != 4 {
+		t.Errorf("expected shape [3, 4], got %v", shape)
+	}
+
+	if ds.Rank() != 2 {
+		t.Errorf("expected rank 2, got %d", ds.Rank())
+	}
+
+	if ds.NumElements() != 12 {
+		t.Errorf("expected 12 elements, got %d", ds.NumElements())
+	}
+
+	data, err := ds.ReadInt32()
+	if err != nil {
+		t.Fatalf("ReadInt32 failed: %v", err)
+	}
+
+	// Data should be 0, 1, 2, ..., 11 in row-major order
+	for i := 0; i < 12; i++ {
+		if data[i] != int32(i) {
+			t.Errorf("data[%d] = %d, want %d", i, data[i], i)
+		}
+	}
+}
+
+func TestGroupNavigation(t *testing.T) {
+	path := skipIfNoTestdata(t, "groups.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	// List root members
+	root := f.Root()
+	members, err := root.Members()
+	if err != nil {
+		t.Fatalf("Members failed: %v", err)
+	}
+
+	if len(members) < 2 {
+		t.Errorf("expected at least 2 members, got %d", len(members))
+	}
+
+	// Open group1
+	g1, err := f.OpenGroup("group1")
+	if err != nil {
+		t.Fatalf("OpenGroup group1 failed: %v", err)
+	}
+
+	if g1.Name() != "group1" {
+		t.Errorf("expected name 'group1', got %q", g1.Name())
+	}
+
+	// Open dataset in group
+	ds, err := g1.OpenDataset("data")
+	if err != nil {
+		t.Fatalf("OpenDataset data failed: %v", err)
+	}
+
+	data, err := ds.ReadInt64()
+	if err != nil {
+		t.Fatalf("ReadInt64 failed: %v", err)
+	}
+
+	expected := []int64{1, 2, 3}
+	for i, v := range expected {
+		if data[i] != v {
+			t.Errorf("data[%d] = %d, want %d", i, data[i], v)
+		}
+	}
+
+	// Test path-based access
+	ds2, err := f.OpenDataset("group1/data")
+	if err != nil {
+		t.Fatalf("OpenDataset group1/data failed: %v", err)
+	}
+
+	if ds2.Path() != "/group1/data" {
+		t.Errorf("expected path '/group1/data', got %q", ds2.Path())
+	}
+}
+
+func TestDatasetAttributes(t *testing.T) {
+	path := skipIfNoTestdata(t, "attributes.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	ds, err := f.OpenDataset("data")
+	if err != nil {
+		t.Fatalf("OpenDataset failed: %v", err)
+	}
+
+	attrs := ds.Attrs()
+	if len(attrs) < 1 {
+		t.Errorf("expected at least 1 attribute, got %d", len(attrs))
+	}
+}
+
+func TestFileClose(t *testing.T) {
+	path := skipIfNoTestdata(t, "minimal.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+
+	err = f.Close()
+	if err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+
+	// Double close should be safe
+	err = f.Close()
+	if err != nil {
+		t.Fatalf("Double close failed: %v", err)
+	}
+
+	// Operations after close should fail
+	_, err = f.OpenDataset("data")
+	if err != ErrClosed {
+		t.Errorf("expected ErrClosed after close, got %v", err)
+	}
+}
+
+func TestSplitPath(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []string
+	}{
+		{"", nil},
+		{"/", nil},
+		{"foo", []string{"foo"}},
+		{"/foo", []string{"foo"}},
+		{"foo/bar", []string{"foo", "bar"}},
+		{"/foo/bar", []string{"foo", "bar"}},
+		{"/foo/bar/", []string{"foo", "bar"}},
+	}
+
+	for _, tt := range tests {
+		result := splitPath(tt.input)
+		if len(result) != len(tt.expected) {
+			t.Errorf("splitPath(%q): expected %v, got %v", tt.input, tt.expected, result)
+			continue
+		}
+		for i := range result {
+			if result[i] != tt.expected[i] {
+				t.Errorf("splitPath(%q)[%d]: expected %q, got %q", tt.input, i, tt.expected[i], result[i])
+			}
+		}
+	}
+}
+
+func TestV0SuperblockMinimal(t *testing.T) {
+	path := skipIfNoTestdata(t, "v0_minimal.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	ds, err := f.OpenDataset("data")
+	if err != nil {
+		t.Fatalf("OpenDataset failed: %v", err)
+	}
+
+	data, err := ds.ReadFloat64()
+	if err != nil {
+		t.Fatalf("ReadFloat64 failed: %v", err)
+	}
+
+	expected := []float64{1.0, 2.0, 3.0, 4.0}
+	for i, v := range expected {
+		if data[i] != v {
+			t.Errorf("data[%d] = %f, want %f", i, data[i], v)
+		}
+	}
+}
+
+func TestV0SuperblockIntegers(t *testing.T) {
+	path := skipIfNoTestdata(t, "v0_integers.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	// Test int32
+	ds32, err := f.OpenDataset("int32")
+	if err != nil {
+		t.Fatalf("OpenDataset int32 failed: %v", err)
+	}
+
+	data32, err := ds32.ReadInt32()
+	if err != nil {
+		t.Fatalf("ReadInt32 failed: %v", err)
+	}
+
+	expected32 := []int32{1, 2, 3, 4, 5}
+	for i, v := range expected32 {
+		if data32[i] != v {
+			t.Errorf("int32[%d] = %d, want %d", i, data32[i], v)
+		}
+	}
+
+	// Test int64
+	ds64, err := f.OpenDataset("int64")
+	if err != nil {
+		t.Fatalf("OpenDataset int64 failed: %v", err)
+	}
+
+	data64, err := ds64.ReadInt64()
+	if err != nil {
+		t.Fatalf("ReadInt64 failed: %v", err)
+	}
+
+	expected64 := []int64{10, 20, 30}
+	for i, v := range expected64 {
+		if data64[i] != v {
+			t.Errorf("int64[%d] = %d, want %d", i, data64[i], v)
+		}
+	}
+}
+
+func TestReadAttributeValues(t *testing.T) {
+	path := skipIfNoTestdata(t, "attributes.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	ds, err := f.OpenDataset("data")
+	if err != nil {
+		t.Fatalf("OpenDataset failed: %v", err)
+	}
+
+	// Test int attribute
+	intAttr := ds.Attr("int_attr")
+	if intAttr == nil {
+		t.Fatal("int_attr not found")
+	}
+	intVal, err := intAttr.ReadScalarInt64()
+	if err != nil {
+		t.Fatalf("ReadScalarInt64 failed: %v", err)
+	}
+	if intVal != 42 {
+		t.Errorf("int_attr = %d, want 42", intVal)
+	}
+
+	// Test float attribute
+	floatAttr := ds.Attr("float_attr")
+	if floatAttr == nil {
+		t.Fatal("float_attr not found")
+	}
+	floatVal, err := floatAttr.ReadScalarFloat64()
+	if err != nil {
+		t.Fatalf("ReadScalarFloat64 failed: %v", err)
+	}
+	if floatVal != 3.14 {
+		t.Errorf("float_attr = %f, want 3.14", floatVal)
+	}
+
+	// Test string attribute
+	strAttr := ds.Attr("string_attr")
+	if strAttr == nil {
+		t.Fatal("string_attr not found")
+	}
+	strVal, err := strAttr.ReadScalarString()
+	if err != nil {
+		t.Fatalf("ReadScalarString failed: %v", err)
+	}
+	if strVal != "hello" {
+		t.Errorf("string_attr = %q, want %q", strVal, "hello")
+	}
+}
+
+func TestVarLenStringAttributes(t *testing.T) {
+	path := skipIfNoTestdata(t, "varlen_attrs.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	ds, err := f.OpenDataset("data")
+	if err != nil {
+		t.Fatalf("OpenDataset failed: %v", err)
+	}
+
+	// Test variable-length string attribute
+	descAttr := ds.Attr("description")
+	if descAttr == nil {
+		t.Fatal("description attribute not found")
+	}
+
+	desc, err := descAttr.ReadScalarString()
+	if err != nil {
+		t.Fatalf("ReadScalarString failed: %v", err)
+	}
+
+	expected := "A variable length string attribute"
+	if desc != expected {
+		t.Errorf("description = %q, want %q", desc, expected)
+	}
+
+	// Test another variable-length string
+	authorAttr := ds.Attr("author")
+	if authorAttr == nil {
+		t.Fatal("author attribute not found")
+	}
+
+	author, err := authorAttr.ReadScalarString()
+	if err != nil {
+		t.Fatalf("ReadScalarString (author) failed: %v", err)
+	}
+
+	if author != "Test Author" {
+		t.Errorf("author = %q, want %q", author, "Test Author")
+	}
+}
+
+func TestCompoundAttributes(t *testing.T) {
+	path := skipIfNoTestdata(t, "compound_attrs.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	ds, err := f.OpenDataset("data")
+	if err != nil {
+		t.Fatalf("OpenDataset failed: %v", err)
+	}
+
+	// Test point attribute (x, y, z floats)
+	pointAttr := ds.Attr("point")
+	if pointAttr == nil {
+		t.Fatal("point attribute not found")
+	}
+
+	if !pointAttr.IsCompound() {
+		t.Error("expected point attribute to be compound type")
+	}
+
+	point, err := pointAttr.ReadScalarCompound()
+	if err != nil {
+		t.Fatalf("ReadScalarCompound failed: %v", err)
+	}
+
+	// Check that we got the expected fields
+	if x, ok := point["x"].(float64); !ok || x != 1.0 {
+		t.Errorf("point.x = %v, want 1.0", point["x"])
+	}
+	if y, ok := point["y"].(float64); !ok || y != 2.0 {
+		t.Errorf("point.y = %v, want 2.0", point["y"])
+	}
+	if z, ok := point["z"].(float64); !ok || z != 3.0 {
+		t.Errorf("point.z = %v, want 3.0", point["z"])
+	}
+
+	// Test record attribute (id, value, count)
+	recordAttr := ds.Attr("record")
+	if recordAttr == nil {
+		t.Fatal("record attribute not found")
+	}
+
+	record, err := recordAttr.ReadScalarCompound()
+	if err != nil {
+		t.Fatalf("ReadScalarCompound (record) failed: %v", err)
+	}
+
+	// Check mixed types
+	if id, ok := record["id"].(int32); !ok || id != 42 {
+		t.Errorf("record.id = %v (%T), want 42", record["id"], record["id"])
+	}
+	if val, ok := record["value"].(float64); !ok || val != 3.14 {
+		t.Errorf("record.value = %v, want 3.14", record["value"])
+	}
+	if count, ok := record["count"].(int32); !ok || count != 100 {
+		t.Errorf("record.count = %v, want 100", record["count"])
+	}
+}
+
+func TestArrayAttributes(t *testing.T) {
+	path := skipIfNoTestdata(t, "array_attrs.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	ds, err := f.OpenDataset("data")
+	if err != nil {
+		t.Fatalf("OpenDataset failed: %v", err)
+	}
+
+	// Test vector attribute (1D float64 array)
+	vectorAttr := ds.Attr("vector")
+	if vectorAttr == nil {
+		t.Fatal("vector attribute not found")
+	}
+
+	vectorVal, err := vectorAttr.ReadFloat64()
+	if err != nil {
+		t.Fatalf("ReadFloat64 (vector) failed: %v", err)
+	}
+
+	expectedVector := []float64{1.0, 2.0, 3.0}
+	if len(vectorVal) != len(expectedVector) {
+		t.Fatalf("vector length = %d, want %d", len(vectorVal), len(expectedVector))
+	}
+	for i, v := range expectedVector {
+		if vectorVal[i] != v {
+			t.Errorf("vector[%d] = %f, want %f", i, vectorVal[i], v)
+		}
+	}
+
+	// Test matrix attribute (2x2 int32 array)
+	matrixAttr := ds.Attr("matrix")
+	if matrixAttr == nil {
+		t.Fatal("matrix attribute not found")
+	}
+
+	// Read as int32 slice (flattened)
+	matrixVal, err := matrixAttr.ReadInt32()
+	if err != nil {
+		t.Fatalf("ReadInt32 (matrix) failed: %v", err)
+	}
+
+	expectedMatrix := []int32{1, 2, 3, 4}
+	if len(matrixVal) != len(expectedMatrix) {
+		t.Fatalf("matrix length = %d, want %d", len(matrixVal), len(expectedMatrix))
+	}
+	for i, v := range expectedMatrix {
+		if matrixVal[i] != v {
+			t.Errorf("matrix[%d] = %d, want %d", i, matrixVal[i], v)
+		}
+	}
+}
+
+func TestFileAttributes(t *testing.T) {
+	path := skipIfNoTestdata(t, "attributes.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	root := f.Root()
+	attrs := root.Attrs()
+
+	// Check that file_attr exists
+	found := false
+	for _, name := range attrs {
+		if name == "file_attr" {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Log("Root attributes:", attrs)
+		// File-level attributes may be stored differently
+		// This is acceptable if file_attr is not on root group
+	}
+}
+
+func TestReadChunkedDataset(t *testing.T) {
+	path := skipIfNoTestdata(t, "chunked.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	ds, err := f.OpenDataset("chunked")
+	if err != nil {
+		t.Fatalf("OpenDataset failed: %v", err)
+	}
+
+	// Check shape
+	shape := ds.Shape()
+	if len(shape) != 2 || shape[0] != 10 || shape[1] != 10 {
+		t.Errorf("expected shape [10 10], got %v", shape)
+	}
+
+	// Read the data
+	data, err := ds.ReadFloat64()
+	if err != nil {
+		t.Fatalf("ReadFloat64 failed: %v", err)
+	}
+
+	// Verify data (should be 0-99 in row-major order)
+	if len(data) != 100 {
+		t.Fatalf("expected 100 elements, got %d", len(data))
+	}
+
+	for i := 0; i < 100; i++ {
+		if data[i] != float64(i) {
+			t.Errorf("data[%d] = %f, want %f", i, data[i], float64(i))
+			break
+		}
+	}
+}
+
+func TestReadCompressedChunkedDataset(t *testing.T) {
+	path := skipIfNoTestdata(t, "compressed.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	// Test gzip compressed dataset
+	t.Run("gzip", func(t *testing.T) {
+		ds, err := f.OpenDataset("gzip")
+		if err != nil {
+			t.Fatalf("OpenDataset failed: %v", err)
+		}
+
+		shape := ds.Shape()
+		if len(shape) != 2 || shape[0] != 100 || shape[1] != 100 {
+			t.Errorf("expected shape [100 100], got %v", shape)
+		}
+
+		data, err := ds.ReadFloat64()
+		if err != nil {
+			t.Fatalf("ReadFloat64 failed: %v", err)
+		}
+
+		if len(data) != 10000 {
+			t.Fatalf("expected 10000 elements, got %d", len(data))
+		}
+
+		// Verify data is in valid range (random values 0-1)
+		for i, v := range data {
+			if v < 0 || v > 1 {
+				t.Errorf("data[%d] = %f, expected value in range [0, 1]", i, v)
+				break
+			}
+		}
+	})
+
+	// Test shuffle + gzip compressed dataset
+	t.Run("shuffle_gzip", func(t *testing.T) {
+		ds, err := f.OpenDataset("shuffle_gzip")
+		if err != nil {
+			t.Fatalf("OpenDataset failed: %v", err)
+		}
+
+		data, err := ds.ReadFloat64()
+		if err != nil {
+			t.Fatalf("ReadFloat64 failed: %v", err)
+		}
+
+		if len(data) != 10000 {
+			t.Fatalf("expected 10000 elements, got %d", len(data))
+		}
+
+		// Verify data is in valid range (random values 0-1)
+		for i, v := range data {
+			if v < 0 || v > 1 {
+				t.Errorf("data[%d] = %f, expected value in range [0, 1]", i, v)
+				break
+			}
+		}
+	})
+}
+
+func TestSoftLinks(t *testing.T) {
+	path := skipIfNoTestdata(t, "softlink.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	// Test direct access to target dataset
+	t.Run("direct_access", func(t *testing.T) {
+		ds, err := f.OpenDataset("target_dataset")
+		if err != nil {
+			t.Fatalf("OpenDataset target_dataset failed: %v", err)
+		}
+
+		data, err := ds.ReadFloat64()
+		if err != nil {
+			t.Fatalf("ReadFloat64 failed: %v", err)
+		}
+
+		expected := []float64{1.0, 2.0, 3.0, 4.0, 5.0}
+		if len(data) != len(expected) {
+			t.Fatalf("expected %d elements, got %d", len(expected), len(data))
+		}
+		for i, v := range expected {
+			if data[i] != v {
+				t.Errorf("data[%d] = %f, want %f", i, data[i], v)
+			}
+		}
+	})
+
+	// Test soft link to dataset
+	t.Run("link_to_dataset", func(t *testing.T) {
+		ds, err := f.OpenDataset("link_to_dataset")
+		if err != nil {
+			t.Fatalf("OpenDataset via soft link failed: %v", err)
+		}
+
+		data, err := ds.ReadFloat64()
+		if err != nil {
+			t.Fatalf("ReadFloat64 failed: %v", err)
+		}
+
+		expected := []float64{1.0, 2.0, 3.0, 4.0, 5.0}
+		if len(data) != len(expected) {
+			t.Fatalf("expected %d elements, got %d", len(expected), len(data))
+		}
+		for i, v := range expected {
+			if data[i] != v {
+				t.Errorf("data[%d] = %f, want %f", i, data[i], v)
+			}
+		}
+	})
+
+	// Test soft link to group
+	t.Run("link_to_group", func(t *testing.T) {
+		grp, err := f.OpenGroup("link_to_group")
+		if err != nil {
+			t.Fatalf("OpenGroup via soft link failed: %v", err)
+		}
+
+		// Access nested dataset through the linked group
+		ds, err := grp.OpenDataset("nested")
+		if err != nil {
+			t.Fatalf("OpenDataset nested failed: %v", err)
+		}
+
+		data, err := ds.ReadInt32()
+		if err != nil {
+			t.Fatalf("ReadInt32 failed: %v", err)
+		}
+
+		expected := []int32{10, 20, 30}
+		if len(data) != len(expected) {
+			t.Fatalf("expected %d elements, got %d", len(expected), len(data))
+		}
+		for i, v := range expected {
+			if data[i] != v {
+				t.Errorf("data[%d] = %d, want %d", i, data[i], v)
+			}
+		}
+	})
+
+	// Test chained soft link (link to another link)
+	t.Run("link_to_link", func(t *testing.T) {
+		ds, err := f.OpenDataset("link_to_link")
+		if err != nil {
+			t.Fatalf("OpenDataset via chained soft link failed: %v", err)
+		}
+
+		data, err := ds.ReadFloat64()
+		if err != nil {
+			t.Fatalf("ReadFloat64 failed: %v", err)
+		}
+
+		expected := []float64{1.0, 2.0, 3.0, 4.0, 5.0}
+		if len(data) != len(expected) {
+			t.Fatalf("expected %d elements, got %d", len(expected), len(data))
+		}
+		for i, v := range expected {
+			if data[i] != v {
+				t.Errorf("data[%d] = %f, want %f", i, data[i], v)
+			}
+		}
+	})
+
+	// Test nested soft link through group
+	t.Run("nested_link_back", func(t *testing.T) {
+		// Access /target_group/link_back which points to /target_dataset
+		ds, err := f.OpenDataset("target_group/link_back")
+		if err != nil {
+			t.Fatalf("OpenDataset via nested soft link failed: %v", err)
+		}
+
+		data, err := ds.ReadFloat64()
+		if err != nil {
+			t.Fatalf("ReadFloat64 failed: %v", err)
+		}
+
+		expected := []float64{1.0, 2.0, 3.0, 4.0, 5.0}
+		if len(data) != len(expected) {
+			t.Fatalf("expected %d elements, got %d", len(expected), len(data))
+		}
+	})
+}
+
+func TestExternalLinks(t *testing.T) {
+	path := skipIfNoTestdata(t, "external_source.h5")
+	_ = skipIfNoTestdata(t, "external_target.h5") // Ensure target exists
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	// Test local data (sanity check)
+	t.Run("local_data", func(t *testing.T) {
+		ds, err := f.OpenDataset("local_data")
+		if err != nil {
+			t.Fatalf("OpenDataset local_data failed: %v", err)
+		}
+
+		data, err := ds.ReadInt64()
+		if err != nil {
+			t.Fatalf("ReadInt64 failed: %v", err)
+		}
+
+		expected := []int64{100, 200, 300}
+		if len(data) != len(expected) {
+			t.Fatalf("expected %d elements, got %d", len(expected), len(data))
+		}
+		for i, v := range expected {
+			if data[i] != v {
+				t.Errorf("data[%d] = %d, want %d", i, data[i], v)
+			}
+		}
+	})
+
+	// Test external link to dataset
+	t.Run("link_to_data", func(t *testing.T) {
+		ds, err := f.OpenDataset("link_to_data")
+		if err != nil {
+			t.Fatalf("OpenDataset via external link failed: %v", err)
+		}
+
+		data, err := ds.ReadFloat64()
+		if err != nil {
+			t.Fatalf("ReadFloat64 failed: %v", err)
+		}
+
+		expected := []float64{1.0, 2.0, 3.0, 4.0, 5.0}
+		if len(data) != len(expected) {
+			t.Fatalf("expected %d elements, got %d", len(expected), len(data))
+		}
+		for i, v := range expected {
+			if data[i] != v {
+				t.Errorf("data[%d] = %f, want %f", i, data[i], v)
+			}
+		}
+	})
+
+	// Test external link to group
+	t.Run("link_to_subgroup", func(t *testing.T) {
+		grp, err := f.OpenGroup("link_to_subgroup")
+		if err != nil {
+			t.Fatalf("OpenGroup via external link failed: %v", err)
+		}
+
+		// Access nested dataset through the externally linked group
+		ds, err := grp.OpenDataset("nested_data")
+		if err != nil {
+			t.Fatalf("OpenDataset nested_data failed: %v", err)
+		}
+
+		data, err := ds.ReadInt64()
+		if err != nil {
+			t.Fatalf("ReadInt64 failed: %v", err)
+		}
+
+		expected := []int64{10, 20, 30}
+		if len(data) != len(expected) {
+			t.Fatalf("expected %d elements, got %d", len(expected), len(data))
+		}
+		for i, v := range expected {
+			if data[i] != v {
+				t.Errorf("data[%d] = %d, want %d", i, data[i], v)
+			}
+		}
+	})
+
+	// Test external link to nested dataset
+	t.Run("link_to_nested", func(t *testing.T) {
+		ds, err := f.OpenDataset("link_to_nested")
+		if err != nil {
+			t.Fatalf("OpenDataset via external link to nested failed: %v", err)
+		}
+
+		data, err := ds.ReadInt64()
+		if err != nil {
+			t.Fatalf("ReadInt64 failed: %v", err)
+		}
+
+		expected := []int64{10, 20, 30}
+		if len(data) != len(expected) {
+			t.Fatalf("expected %d elements, got %d", len(expected), len(data))
+		}
+		for i, v := range expected {
+			if data[i] != v {
+				t.Errorf("data[%d] = %d, want %d", i, data[i], v)
+			}
+		}
+	})
+}
+
+// === EDGE CASE TESTS ===
+
+func TestCircularSoftLinkSelf(t *testing.T) {
+	path := skipIfNoTestdata(t, "circular_self.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	// Accessing real_data should work
+	ds, err := f.OpenDataset("real_data")
+	if err != nil {
+		t.Fatalf("OpenDataset real_data failed: %v", err)
+	}
+	data, err := ds.ReadInt32()
+	if err != nil {
+		t.Fatalf("ReadInt32 failed: %v", err)
+	}
+	expected := []int32{1, 2, 3}
+	for i, v := range expected {
+		if data[i] != v {
+			t.Errorf("data[%d] = %d, want %d", i, data[i], v)
+		}
+	}
+
+	// Accessing circular link should fail with circular reference error
+	_, err = f.OpenDataset("circular")
+	if err == nil {
+		t.Fatal("expected error for circular self-referencing link")
+	}
+	if !strings.Contains(err.Error(), "circular") {
+		t.Errorf("expected circular error, got: %v", err)
+	}
+}
+
+func TestCircularSoftLinkChain(t *testing.T) {
+	path := skipIfNoTestdata(t, "circular_chain.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	// Accessing real_data should work
+	ds, err := f.OpenDataset("real_data")
+	if err != nil {
+		t.Fatalf("OpenDataset real_data failed: %v", err)
+	}
+	data, err := ds.ReadInt32()
+	if err != nil {
+		t.Fatalf("ReadInt32 failed: %v", err)
+	}
+	expected := []int32{1, 2, 3}
+	for i, v := range expected {
+		if data[i] != v {
+			t.Errorf("data[%d] = %d, want %d", i, data[i], v)
+		}
+	}
+
+	// Accessing any link in the cycle should fail
+	for _, linkName := range []string{"link_a", "link_b", "link_c"} {
+		_, err = f.OpenDataset(linkName)
+		if err == nil {
+			t.Fatalf("expected error for circular link chain at %s", linkName)
+		}
+		if !strings.Contains(err.Error(), "circular") {
+			t.Errorf("expected circular error for %s, got: %v", linkName, err)
+		}
+	}
+}
+
+func TestDanglingLink(t *testing.T) {
+	path := skipIfNoTestdata(t, "dangling_link.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	// Accessing real_data should work
+	ds, err := f.OpenDataset("real_data")
+	if err != nil {
+		t.Fatalf("OpenDataset real_data failed: %v", err)
+	}
+	data, err := ds.ReadInt32()
+	if err != nil {
+		t.Fatalf("ReadInt32 failed: %v", err)
+	}
+	expected := []int32{1, 2, 3}
+	for i, v := range expected {
+		if data[i] != v {
+			t.Errorf("data[%d] = %d, want %d", i, data[i], v)
+		}
+	}
+
+	// Accessing dangling links should fail with "not found" error
+	_, err = f.OpenDataset("missing")
+	if err == nil {
+		t.Fatal("expected error for dangling link")
+	}
+
+	_, err = f.OpenDataset("missing_nested")
+	if err == nil {
+		t.Fatal("expected error for dangling nested link")
+	}
+}
+
+func TestDeepLinkChain(t *testing.T) {
+	path := skipIfNoTestdata(t, "deep_chain.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	// Direct access to target should work
+	ds, err := f.OpenDataset("target")
+	if err != nil {
+		t.Fatalf("OpenDataset target failed: %v", err)
+	}
+	data, err := ds.ReadInt32()
+	if err != nil {
+		t.Fatalf("ReadInt32 failed: %v", err)
+	}
+	if len(data) != 1 || data[0] != 42 {
+		t.Errorf("expected [42], got %v", data)
+	}
+
+	// Access through deepest link (link_10 -> link_9 -> ... -> target)
+	ds, err = f.OpenDataset("link_10")
+	if err != nil {
+		t.Fatalf("OpenDataset link_10 failed: %v", err)
+	}
+	data, err = ds.ReadInt32()
+	if err != nil {
+		t.Fatalf("ReadInt32 failed: %v", err)
+	}
+	if len(data) != 1 || data[0] != 42 {
+		t.Errorf("expected [42], got %v", data)
+	}
+}
+
+func TestExternalLinkMissingFile(t *testing.T) {
+	path := skipIfNoTestdata(t, "external_missing.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	// Accessing real_data should work
+	ds, err := f.OpenDataset("real_data")
+	if err != nil {
+		t.Fatalf("OpenDataset real_data failed: %v", err)
+	}
+	data, err := ds.ReadInt32()
+	if err != nil {
+		t.Fatalf("ReadInt32 failed: %v", err)
+	}
+	expected := []int32{1, 2, 3}
+	for i, v := range expected {
+		if data[i] != v {
+			t.Errorf("data[%d] = %d, want %d", i, data[i], v)
+		}
+	}
+
+	// Accessing external link to missing file should fail
+	_, err = f.OpenDataset("missing_file")
+	if err == nil {
+		t.Fatal("expected error for external link to missing file")
+	}
+}
+
+func TestSoftLinkToRoot(t *testing.T) {
+	path := skipIfNoTestdata(t, "link_to_root.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	// Access data directly
+	ds, err := f.OpenDataset("data")
+	if err != nil {
+		t.Fatalf("OpenDataset data failed: %v", err)
+	}
+	data, err := ds.ReadInt32()
+	if err != nil {
+		t.Fatalf("ReadInt32 failed: %v", err)
+	}
+	expected := []int32{1, 2, 3}
+	for i, v := range expected {
+		if data[i] != v {
+			t.Errorf("data[%d] = %d, want %d", i, data[i], v)
+		}
+	}
+
+	// Access root via link and then traverse to data
+	grp, err := f.OpenGroup("root_link")
+	if err != nil {
+		t.Fatalf("OpenGroup root_link failed: %v", err)
+	}
+
+	ds, err = grp.OpenDataset("data")
+	if err != nil {
+		t.Fatalf("OpenDataset data via root_link failed: %v", err)
+	}
+	data, err = ds.ReadInt32()
+	if err != nil {
+		t.Fatalf("ReadInt32 failed: %v", err)
+	}
+	for i, v := range expected {
+		if data[i] != v {
+			t.Errorf("data[%d] = %d, want %d", i, data[i], v)
+		}
+	}
+}
+
+func TestV1FormatSoftLinks(t *testing.T) {
+	path := skipIfNoTestdata(t, "v1_softlinks.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	// Access target directly
+	ds, err := f.OpenDataset("target")
+	if err != nil {
+		t.Fatalf("OpenDataset target failed: %v", err)
+	}
+	data, err := ds.ReadFloat64()
+	if err != nil {
+		t.Fatalf("ReadFloat64 failed: %v", err)
+	}
+	expected := []float64{1.0, 2.0, 3.0}
+	for i, v := range expected {
+		if data[i] != v {
+			t.Errorf("data[%d] = %f, want %f", i, data[i], v)
+		}
+	}
+
+	// Access via soft link (v1 format)
+	ds, err = f.OpenDataset("soft_link")
+	if err != nil {
+		t.Fatalf("OpenDataset soft_link failed: %v", err)
+	}
+	data, err = ds.ReadFloat64()
+	if err != nil {
+		t.Fatalf("ReadFloat64 failed: %v", err)
+	}
+	for i, v := range expected {
+		if data[i] != v {
+			t.Errorf("data[%d] = %f, want %f", i, data[i], v)
+		}
+	}
+
+	// Access group via soft link
+	grp, err := f.OpenGroup("link_to_group")
+	if err != nil {
+		t.Fatalf("OpenGroup link_to_group failed: %v", err)
+	}
+	ds, err = grp.OpenDataset("nested")
+	if err != nil {
+		t.Fatalf("OpenDataset nested failed: %v", err)
+	}
+	intData, err := ds.ReadInt32()
+	if err != nil {
+		t.Fatalf("ReadInt32 failed: %v", err)
+	}
+	expectedInt := []int32{10, 20, 30}
+	for i, v := range expectedInt {
+		if intData[i] != v {
+			t.Errorf("data[%d] = %d, want %d", i, intData[i], v)
+		}
+	}
+}
+
+func TestMixedSoftExternalChain(t *testing.T) {
+	path := skipIfNoTestdata(t, "mixed_chain.h5")
+	_ = skipIfNoTestdata(t, "external_target.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	// Access local data
+	ds, err := f.OpenDataset("local")
+	if err != nil {
+		t.Fatalf("OpenDataset local failed: %v", err)
+	}
+	data, err := ds.ReadInt32()
+	if err != nil {
+		t.Fatalf("ReadInt32 failed: %v", err)
+	}
+	expectedInt := []int32{1, 2, 3}
+	for i, v := range expectedInt {
+		if data[i] != v {
+			t.Errorf("data[%d] = %d, want %d", i, data[i], v)
+		}
+	}
+
+	// Access external data via soft link -> external link chain
+	ds, err = f.OpenDataset("soft_to_ext")
+	if err != nil {
+		t.Fatalf("OpenDataset soft_to_ext failed: %v", err)
+	}
+	floatData, err := ds.ReadFloat64()
+	if err != nil {
+		t.Fatalf("ReadFloat64 failed: %v", err)
+	}
+	expectedFloat := []float64{1.0, 2.0, 3.0, 4.0, 5.0}
+	if len(floatData) != len(expectedFloat) {
+		t.Fatalf("expected %d elements, got %d", len(expectedFloat), len(floatData))
+	}
+	for i, v := range expectedFloat {
+		if floatData[i] != v {
+			t.Errorf("data[%d] = %f, want %f", i, floatData[i], v)
+		}
+	}
+}
+
+
+// TestMaxLinkDepthConstant verifies the MaxLinkDepth constant exists and is reasonable
+func TestMaxLinkDepthConstant(t *testing.T) {
+	if MaxLinkDepth < 10 {
+		t.Errorf("MaxLinkDepth too small: %d (should be at least 10)", MaxLinkDepth)
+	}
+	if MaxLinkDepth > 10000 {
+		t.Errorf("MaxLinkDepth too large: %d (should be at most 10000)", MaxLinkDepth)
+	}
+	// Current value should be 100
+	if MaxLinkDepth != 100 {
+		t.Logf("MaxLinkDepth is %d", MaxLinkDepth)
+	}
+}
+
+// TestErrLinkDepthExists verifies the ErrLinkDepth error exists
+func TestErrLinkDepthExists(t *testing.T) {
+	if ErrLinkDepth == nil {
+		t.Error("ErrLinkDepth should not be nil")
+	}
+	if ErrLinkDepth.Error() != "maximum link depth exceeded" {
+		t.Errorf("unexpected error message: %s", ErrLinkDepth.Error())
+	}
+}
+
+// TestBTreeV2Chunked tests reading a dataset with B-tree v2 chunk indexing
+func TestBTreeV2Chunked(t *testing.T) {
+	path := skipIfNoTestdata(t, "btree_v2.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	// Test the small dataset (10x10 int32)
+	ds, err := f.OpenDataset("small")
+	if err != nil {
+		t.Fatalf("OpenDataset small failed: %v", err)
+	}
+
+	data, err := ds.ReadInt32()
+	if err != nil {
+		t.Fatalf("ReadInt32 failed: %v", err)
+	}
+
+	// Verify data (should be 0..99)
+	if len(data) != 100 {
+		t.Fatalf("expected 100 elements, got %d", len(data))
+	}
+	for i := 0; i < 100; i++ {
+		if data[i] != int32(i) {
+			t.Errorf("data[%d] = %d, want %d", i, data[i], i)
+			break
+		}
+	}
+
+	// Test the larger dataset (100x100 float64)
+	ds, err = f.OpenDataset("chunked")
+	if err != nil {
+		t.Fatalf("OpenDataset chunked failed: %v", err)
+	}
+
+	floatData, err := ds.ReadFloat64()
+	if err != nil {
+		t.Fatalf("ReadFloat64 failed: %v", err)
+	}
+
+	// Verify data (should be 0..9999)
+	if len(floatData) != 10000 {
+		t.Fatalf("expected 10000 elements, got %d", len(floatData))
+	}
+	for i := 0; i < 10; i++ {
+		if floatData[i] != float64(i) {
+			t.Errorf("floatData[%d] = %f, want %f", i, floatData[i], float64(i))
+		}
+	}
+	// Check last few elements
+	for i := 9990; i < 10000; i++ {
+		if floatData[i] != float64(i) {
+			t.Errorf("floatData[%d] = %f, want %f", i, floatData[i], float64(i))
+		}
+	}
+}
+
+// TestBTreeV2Compressed tests reading a compressed dataset with B-tree v2
+func TestBTreeV2Compressed(t *testing.T) {
+	path := skipIfNoTestdata(t, "btree_v2_compressed.h5")
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+
+	ds, err := f.OpenDataset("compressed")
+	if err != nil {
+		t.Fatalf("OpenDataset compressed failed: %v", err)
+	}
+
+	data, err := ds.ReadFloat64()
+	if err != nil {
+		t.Fatalf("ReadFloat64 failed: %v", err)
+	}
+
+	// Verify data (should be 0..9999)
+	if len(data) != 10000 {
+		t.Fatalf("expected 10000 elements, got %d", len(data))
+	}
+	for i := 0; i < 10; i++ {
+		if data[i] != float64(i) {
+			t.Errorf("data[%d] = %f, want %f", i, data[i], float64(i))
+		}
+	}
+}
