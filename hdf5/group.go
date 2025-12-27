@@ -15,6 +15,10 @@ type Group struct {
 	file   *File
 	path   string
 	header *object.Header
+	addr   uint64 // Object header address (for write support)
+
+	// Write support fields
+	pendingLinks []*message.Link // Links to be written
 }
 
 // linkResolution holds the result of resolving a link.

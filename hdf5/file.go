@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/robert-malhotra/go-hdf5/internal/alloc"
 	"github.com/robert-malhotra/go-hdf5/internal/binary"
 	"github.com/robert-malhotra/go-hdf5/internal/object"
 	"github.com/robert-malhotra/go-hdf5/internal/superblock"
@@ -20,6 +21,11 @@ type File struct {
 	root          *Group
 	closed        bool
 	externalFiles map[string]*File // Cache of opened external files
+
+	// Write support fields
+	writable  bool
+	writer    *binary.Writer
+	allocator *alloc.Allocator // Space allocator for writing
 }
 
 // Open opens an HDF5 file for reading.
@@ -63,6 +69,14 @@ func (f *File) Close() error {
 		return nil
 	}
 	f.closed = true
+
+	// Handle writable file finalization
+	if f.writable {
+		if err := f.closeWritable(); err != nil {
+			f.file.Close()
+			return err
+		}
+	}
 
 	// Close all external files
 	for _, extFile := range f.externalFiles {

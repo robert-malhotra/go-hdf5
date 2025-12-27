@@ -18,14 +18,15 @@ const (
 )
 
 // ChunkIndexType represents the type of chunk index used in v3/v4 layouts.
+// Values match HDF5 spec: stored in bits 0-4 of the flags byte.
 type ChunkIndexType uint8
 
 const (
-	ChunkIndexSingleChunk    ChunkIndexType = 0 // Single chunk (no index needed)
-	ChunkIndexImplicit       ChunkIndexType = 1 // Implicit (contiguous chunks)
-	ChunkIndexFixedArray     ChunkIndexType = 2 // Fixed array
-	ChunkIndexExtensibleArray ChunkIndexType = 3 // Extensible array
-	ChunkIndexBTreeV2        ChunkIndexType = 4 // B-tree v2
+	ChunkIndexSingleChunk     ChunkIndexType = 1 // Single chunk (no index needed)
+	ChunkIndexImplicit        ChunkIndexType = 2 // Implicit (contiguous chunks)
+	ChunkIndexFixedArray      ChunkIndexType = 3 // Fixed array
+	ChunkIndexExtensibleArray ChunkIndexType = 4 // Extensible array
+	ChunkIndexBTreeV2         ChunkIndexType = 5 // B-tree v2
 )
 
 // DataLayout represents a data layout message (type 0x0008).

@@ -3,64 +3,70 @@ package binary
 // Lookup3Checksum computes the Jenkins lookup3 hash used by HDF5 for
 // metadata checksums (superblock v2/v3, object header v2, etc.).
 //
-// This implementation follows the HDF5 specification which uses the
-// hashlittle2 variant with initial values of 0.
+// This implementation follows the HDF5 library's H5_checksum_lookup3
+// which uses the hashlittle variant with initial values of 0.
 func Lookup3Checksum(data []byte) uint32 {
 	length := len(data)
 	// Jenkins hashlittle: a = b = c = 0xdeadbeef + length + initval
 	// HDF5 uses initval = 0
 	initval := uint32(0xdeadbeef) + uint32(length)
 	a, b, c := initval, initval, initval
+	k := data
 
-	i := 0
-	// Process 12-byte chunks
-	for ; i+12 <= length; i += 12 {
-		a += uint32(data[i]) | uint32(data[i+1])<<8 |
-			uint32(data[i+2])<<16 | uint32(data[i+3])<<24
-		b += uint32(data[i+4]) | uint32(data[i+5])<<8 |
-			uint32(data[i+6])<<16 | uint32(data[i+7])<<24
-		c += uint32(data[i+8]) | uint32(data[i+9])<<8 |
-			uint32(data[i+10])<<16 | uint32(data[i+11])<<24
+	// Process while MORE than 12 bytes remain (NOT >=, matching HDF5's "while (length > 12)")
+	// This is critical: HDF5 processes the last 1-12 bytes in the switch statement
+	// with final mix, not in the main loop with intermediate mix.
+	for len(k) > 12 {
+		a += uint32(k[0]) | uint32(k[1])<<8 |
+			uint32(k[2])<<16 | uint32(k[3])<<24
+		b += uint32(k[4]) | uint32(k[5])<<8 |
+			uint32(k[6])<<16 | uint32(k[7])<<24
+		c += uint32(k[8]) | uint32(k[9])<<8 |
+			uint32(k[10])<<16 | uint32(k[11])<<24
 		a, b, c = lookup3Mix(a, b, c)
+		k = k[12:]
 	}
 
-	// Handle remaining bytes
-	remaining := length - i
-	switch remaining {
+	// Handle final 0-12 bytes
+	switch len(k) {
+	case 12:
+		c += uint32(k[11]) << 24
+		fallthrough
 	case 11:
-		c += uint32(data[i+10]) << 16
+		c += uint32(k[10]) << 16
 		fallthrough
 	case 10:
-		c += uint32(data[i+9]) << 8
+		c += uint32(k[9]) << 8
 		fallthrough
 	case 9:
-		c += uint32(data[i+8])
+		c += uint32(k[8])
 		fallthrough
 	case 8:
-		b += uint32(data[i+7]) << 24
+		b += uint32(k[7]) << 24
 		fallthrough
 	case 7:
-		b += uint32(data[i+6]) << 16
+		b += uint32(k[6]) << 16
 		fallthrough
 	case 6:
-		b += uint32(data[i+5]) << 8
+		b += uint32(k[5]) << 8
 		fallthrough
 	case 5:
-		b += uint32(data[i+4])
+		b += uint32(k[4])
 		fallthrough
 	case 4:
-		a += uint32(data[i+3]) << 24
+		a += uint32(k[3]) << 24
 		fallthrough
 	case 3:
-		a += uint32(data[i+2]) << 16
+		a += uint32(k[2]) << 16
 		fallthrough
 	case 2:
-		a += uint32(data[i+1]) << 8
+		a += uint32(k[1]) << 8
 		fallthrough
 	case 1:
-		a += uint32(data[i])
+		a += uint32(k[0])
 	case 0:
-		// Nothing to add, but still need to do final mix
+		// No bytes remaining, skip final mix (matching HDF5's "goto done")
+		return c
 	}
 
 	a, b, c = lookup3Final(a, b, c)

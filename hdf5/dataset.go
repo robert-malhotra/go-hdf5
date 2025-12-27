@@ -19,6 +19,11 @@ type Dataset struct {
 	dataspace *message.Dataspace
 	datatype  *message.Datatype
 	layout    layout.Layout
+
+	// Write support fields
+	dataAddr    uint64 // Address where data is stored
+	dataSize    uint64 // Size of data in bytes
+	numElements uint64 // Number of elements
 }
 
 // newDataset creates a Dataset from an object header.
