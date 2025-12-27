@@ -13,6 +13,11 @@ var (
 	ErrInvalidPath   = errors.New("invalid path")
 	ErrClosed        = errors.New("file is closed")
 	ErrLinkDepth     = errors.New("maximum link depth exceeded")
+
+	// Specific not-found errors for different object types
+	ErrDatasetNotFound   = errors.New("dataset not found")
+	ErrGroupNotFound     = errors.New("group not found")
+	ErrAttributeNotFound = errors.New("attribute not found")
 )
 
 // MaxLinkDepth is the maximum number of soft/external links that can be followed

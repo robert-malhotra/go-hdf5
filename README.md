@@ -224,7 +224,6 @@ if errors.Is(err, hdf5.ErrNotFound) {
 | `Name() string` | Dataset name |
 | `Path() string` | Full path to this dataset |
 | `Shape() []uint64` | Dimensions (nil for scalar) |
-| `Dims() []uint64` | Alias for Shape() |
 | `Rank() int` | Number of dimensions |
 | `NumElements() uint64` | Total element count |
 | `IsScalar() bool` | True if scalar (single value) |

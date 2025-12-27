@@ -81,11 +81,6 @@ func (d *Dataset) Shape() []uint64 {
 	return d.dataspace.Dimensions
 }
 
-// Dims is an alias for Shape.
-func (d *Dataset) Dims() []uint64 {
-	return d.Shape()
-}
-
 // Rank returns the number of dimensions.
 func (d *Dataset) Rank() int {
 	return d.dataspace.Rank
@@ -133,6 +128,37 @@ func (d *Dataset) Read(dest interface{}) error {
 // ReadRaw reads all data from the dataset as raw bytes.
 func (d *Dataset) ReadRaw() ([]byte, error) {
 	return d.layout.Read()
+}
+
+// ReadSlice reads a hyperslab (rectangular selection) of the dataset.
+// start specifies the starting coordinates, count specifies the number of elements per dimension.
+// dest should be a pointer to a slice of the appropriate type.
+//
+// Example for a 2D dataset (10x20):
+//
+//	// Read a 5x10 region starting at (2, 5)
+//	var result []float64
+//	err := ds.ReadSlice([]uint64{2, 5}, []uint64{5, 10}, &result)
+func (d *Dataset) ReadSlice(start, count []uint64, dest interface{}) error {
+	// Read raw slice data
+	raw, err := d.layout.ReadSlice(start, count)
+	if err != nil {
+		return fmt.Errorf("reading slice: %w", err)
+	}
+
+	// Calculate number of elements in the slice
+	numElements := uint64(1)
+	for _, c := range count {
+		numElements *= c
+	}
+
+	// Convert to Go types
+	return dtype.Convert(d.datatype, raw, numElements, dest)
+}
+
+// ReadSliceRaw reads a hyperslab as raw bytes without type conversion.
+func (d *Dataset) ReadSliceRaw(start, count []uint64) ([]byte, error) {
+	return d.layout.ReadSlice(start, count)
 }
 
 // ReadFloat64 reads the dataset as float64 values.

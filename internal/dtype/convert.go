@@ -1,5 +1,53 @@
 package dtype
 
+// Type Conversion Strategy
+//
+// This file implements conversion between HDF5 raw bytes and Go values.
+// The strategy handles both reading (HDF5 -> Go) and the data structures
+// needed for efficient conversion.
+//
+// # Conversion Dispatch
+//
+// The main Convert function dispatches based on the HDF5 datatype class:
+//
+//   - Fixed-point (integers): Converts using byte order and size
+//   - Float-point: Converts using IEEE 754 bit representations
+//   - String (fixed): Copies bytes, handles null/space padding
+//   - String (varlen): Resolves global heap references
+//   - Compound: Recursively converts each member by offset
+//   - Array: Converts element sequences based on array dimensions
+//   - Enum: Converts as underlying integer type
+//   - Bitfield: Converts as unsigned integer
+//   - Opaque: Returns raw bytes
+//
+// # Fast Path Optimization
+//
+// For common cases where the HDF5 type exactly matches the Go type (same
+// size, same endianness as the platform), we use direct memory copy via
+// unsafe.Pointer. This is controlled by canDirectCopy() and directCopy().
+//
+// The fast path applies when:
+//   - Byte order is little-endian (matches x86/ARM platforms)
+//   - Element size matches the Go type size
+//   - Type class is fixed-point or float-point
+//
+// # Variable-Length Data
+//
+// Variable-length strings and sequences store references to the global heap
+// rather than inline data. Each reference contains:
+//   - 4 bytes: sequence length
+//   - offsetSize bytes: global heap collection address
+//   - 4 bytes: object index within collection
+//
+// The convertVarLenString function resolves these references by reading
+// from the global heap, caching collections for efficiency.
+//
+// # Compound Type Handling
+//
+// Compound types (structs) store members at specific byte offsets within
+// each element. The conversion extracts each member's bytes based on its
+// offset and recursively converts using the member's datatype.
+
 import (
 	"fmt"
 	"math"

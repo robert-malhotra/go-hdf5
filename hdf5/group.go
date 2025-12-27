@@ -21,6 +21,22 @@ type Group struct {
 	pendingLinks []*message.Link // Links to be written
 }
 
+// ObjectType indicates the type of an HDF5 object.
+type ObjectType string
+
+const (
+	ObjectTypeGroup   ObjectType = "group"
+	ObjectTypeDataset ObjectType = "dataset"
+	ObjectTypeUnknown ObjectType = "unknown"
+)
+
+// MemberInfo contains information about a group member.
+type MemberInfo struct {
+	Name     string     // Name of the member
+	Type     ObjectType // Type of the object ("group", "dataset", or "unknown")
+	LinkType string     // Type of the link ("hard", "soft", or "external")
+}
+
 // linkResolution holds the result of resolving a link.
 type linkResolution struct {
 	address   uint64 // Object address
@@ -327,6 +343,111 @@ func (g *Group) getMembersV1(symTable *message.SymbolTable) ([]btree.GroupEntry,
 
 	// Read the B-tree to get group entries
 	return btree.ReadGroupEntries(g.file.reader, symTable.BTreeAddress, localHeap)
+}
+
+// MembersInfo returns detailed information about all members in this group.
+// This includes the object type and link type for each member.
+func (g *Group) MembersInfo() ([]MemberInfo, error) {
+	var members []MemberInfo
+
+	// Collect from Link messages (v2 groups)
+	for _, msg := range g.header.GetMessages(message.TypeLink) {
+		link := msg.(*message.Link)
+		info := MemberInfo{
+			Name:     link.Name,
+			LinkType: g.linkTypeString(link),
+		}
+
+		// Determine object type by checking if it's a dataset or group
+		objType := ObjectTypeUnknown
+		if link.IsHard() {
+			isDs, err := g.isDataset(link.ObjectAddress)
+			if err == nil {
+				if isDs {
+					objType = ObjectTypeDataset
+				} else {
+					objType = ObjectTypeGroup
+				}
+			}
+		} else if link.IsSoft() || link.IsExternal() {
+			// For soft/external links, try to resolve and check type
+			res, err := g.resolveLink(link, make(map[string]bool))
+			if err == nil {
+				if res.isDataset {
+					objType = ObjectTypeDataset
+				} else {
+					objType = ObjectTypeGroup
+				}
+			}
+		}
+		info.Type = objType
+		members = append(members, info)
+	}
+
+	// If using symbol table (v1 groups), traverse the B-tree
+	if len(members) == 0 {
+		symMsg := g.header.GetMessage(message.TypeSymbolTable)
+		var symTable *message.SymbolTable
+		if symMsg != nil {
+			symTable = symMsg.(*message.SymbolTable)
+		} else if g.path == "/" && g.file.superblock.RootGroupBTreeAddress != 0 {
+			// Fallback for root group
+			symTable = &message.SymbolTable{
+				BTreeAddress:     g.file.superblock.RootGroupBTreeAddress,
+				LocalHeapAddress: g.file.superblock.RootGroupLocalHeapAddress,
+			}
+		}
+
+		if symTable != nil {
+			entries, err := g.getMembersV1(symTable)
+			if err != nil {
+				return nil, err
+			}
+			for _, entry := range entries {
+				info := MemberInfo{
+					Name: entry.Name,
+				}
+
+				// Determine link type
+				if entry.LinkType == 1 {
+					info.LinkType = "soft"
+				} else {
+					info.LinkType = "hard"
+				}
+
+				// Determine object type
+				objType := ObjectTypeUnknown
+				if entry.LinkType == 0 && entry.ObjectAddress != 0 {
+					isDs, err := g.isDataset(entry.ObjectAddress)
+					if err == nil {
+						if isDs {
+							objType = ObjectTypeDataset
+						} else {
+							objType = ObjectTypeGroup
+						}
+					}
+				}
+				info.Type = objType
+				members = append(members, info)
+			}
+		}
+	}
+
+	return members, nil
+}
+
+// linkTypeString returns a string representation of the link type.
+func (g *Group) linkTypeString(link *message.Link) string {
+	switch {
+	case link.IsHard():
+		return "hard"
+	case link.IsSoft():
+		return "soft"
+	case link.IsExternal():
+		return "external"
+	default:
+		return "unknown"
+	}
 }
 
 // NumObjects returns the number of objects in this group.

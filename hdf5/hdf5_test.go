@@ -334,8 +334,8 @@ func TestSplitPath(t *testing.T) {
 		input    string
 		expected []string
 	}{
-		{"", nil},
-		{"/", nil},
+		{"", []string{}},
+		{"/", []string{}},
 		{"foo", []string{"foo"}},
 		{"/foo", []string{"foo"}},
 		{"foo/bar", []string{"foo", "bar"}},
@@ -344,14 +344,14 @@ func TestSplitPath(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		result := splitPath(tt.input)
+		result := SplitPath(tt.input)
 		if len(result) != len(tt.expected) {
-			t.Errorf("splitPath(%q): expected %v, got %v", tt.input, tt.expected, result)
+			t.Errorf("SplitPath(%q): expected %v, got %v", tt.input, tt.expected, result)
 			continue
 		}
 		for i := range result {
 			if result[i] != tt.expected[i] {
-				t.Errorf("splitPath(%q)[%d]: expected %q, got %q", tt.input, i, tt.expected[i], result[i])
+				t.Errorf("SplitPath(%q)[%d]: expected %q, got %q", tt.input, i, tt.expected[i], result[i])
 			}
 		}
 	}

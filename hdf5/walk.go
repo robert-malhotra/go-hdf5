@@ -4,6 +4,79 @@ import (
 	"path"
 )
 
+// WalkFunc is called for each object during traversal.
+// path is the full path to the object.
+// obj is either *Group or *Dataset.
+// err is any error encountered opening the object.
+// Return nil to continue walking, or an error to stop.
+type WalkFunc func(path string, obj interface{}, err error) error
+
+// Walk traverses all objects (groups and datasets) in the hierarchy starting from g.
+// The callback is called for each group and dataset, including the starting group.
+//
+// Example:
+//
+//	Walk(root, func(path string, obj interface{}, err error) error {
+//	    if err != nil {
+//	        return err // or skip: return nil
+//	    }
+//	    switch o := obj.(type) {
+//	    case *Group:
+//	        fmt.Println("Group:", path)
+//	    case *Dataset:
+//	        fmt.Println("Dataset:", path, "shape:", o.Shape())
+//	    }
+//	    return nil
+//	})
+func Walk(g *Group, fn WalkFunc) error {
+	return walkGroup(g, fn)
+}
+
+// walkGroup recursively walks a group and its children.
+func walkGroup(g *Group, fn WalkFunc) error {
+	// Call fn for this group first
+	if err := fn(g.Path(), g, nil); err != nil {
+		return err
+	}
+
+	// Get all members
+	members, err := g.Members()
+	if err != nil {
+		return err
+	}
+
+	// Process each child
+	for _, name := range members {
+		childPath := path.Join(g.Path(), name)
+
+		// Try as group first
+		childGroup, err := g.OpenGroup(name)
+		if err == nil {
+			// It's a group - recurse
+			if err := walkGroup(childGroup, fn); err != nil {
+				return err
+			}
+			continue
+		}
+
+		// Try as dataset
+		dataset, err := g.OpenDataset(name)
+		if err == nil {
+			if err := fn(childPath, dataset, nil); err != nil {
+				return err
+			}
+			continue
+		}
+
+		// Could not open as either - call fn with error
+		if err := fn(childPath, nil, err); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // AttrInfo contains information about an attribute during walking.
 type AttrInfo struct {
 	// Path is the full attribute path (e.g., "/group/dataset@attr")

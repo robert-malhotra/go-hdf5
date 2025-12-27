@@ -25,7 +25,18 @@ func TestCompactRead(t *testing.T) {
 		CompactData: data,
 	}
 
-	compact := NewCompact(layoutMsg)
+	dataspace := &message.Dataspace{
+		SpaceType:  message.DataspaceSimple,
+		Rank:       1,
+		Dimensions: []uint64{8},
+	}
+
+	datatype := &message.Datatype{
+		Class: message.ClassFixedPoint,
+		Size:  1,
+	}
+
+	compact := NewCompact(layoutMsg, dataspace, datatype)
 
 	if compact.Class() != message.LayoutCompact {
 		t.Errorf("expected compact class, got %d", compact.Class())

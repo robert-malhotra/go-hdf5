@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/robert-malhotra/go-hdf5/internal/alloc"
 	"github.com/robert-malhotra/go-hdf5/internal/binary"
@@ -142,22 +141,10 @@ func (f *File) openDatasetAt(address uint64, path string) (*Dataset, error) {
 	return newDataset(f, path, header)
 }
 
-// normalizePath normalizes a path, handling leading/trailing slashes.
-func normalizePath(path string) string {
-	// Remove leading slash for relative paths
-	path = strings.TrimPrefix(path, "/")
-	// Remove trailing slash
-	path = strings.TrimSuffix(path, "/")
-	return path
-}
-
 // splitPath splits a path into its components.
+// This is an internal wrapper around SplitPath for compatibility.
 func splitPath(path string) []string {
-	path = normalizePath(path)
-	if path == "" {
-		return nil
-	}
-	return strings.Split(path, "/")
+	return SplitPath(path)
 }
 
 // GetAttr returns an attribute by path.
@@ -186,7 +173,7 @@ func (f *File) GetAttr(path string) (*Attribute, error) {
 	// Get the attribute from the object
 	attr := obj.Attr(attrName)
 	if attr == nil {
-		return nil, fmt.Errorf("attribute not found: %s", attrName)
+		return nil, ErrAttributeNotFound
 	}
 	return attr, nil
 }
@@ -229,7 +216,7 @@ func (f *File) getAttributeHolder(path string) (attributeHolder, error) {
 		return dataset, nil
 	}
 
-	return nil, fmt.Errorf("object not found: %s", path)
+	return nil, ErrNotFound
 }
 
 // findByAbsolutePath navigates an absolute path and returns the target's address.

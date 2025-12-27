@@ -15,21 +15,25 @@ func defaultFileOptions() *fileOptions {
 	}
 }
 
-// WithOffsetSize sets the size in bytes for file offsets (2, 4, or 8).
+// WithOffsetSize sets the size in bytes for file offsets.
+// Valid values are 2, 4, or 8 bytes. Any other value will cause a panic.
 func WithOffsetSize(size int) FileOption {
+	if size != 2 && size != 4 && size != 8 {
+		panic("WithOffsetSize: size must be 2, 4, or 8")
+	}
 	return func(o *fileOptions) {
-		if size == 2 || size == 4 || size == 8 {
-			o.offsetSize = size
-		}
+		o.offsetSize = size
 	}
 }
 
-// WithLengthSize sets the size in bytes for lengths (2, 4, or 8).
+// WithLengthSize sets the size in bytes for lengths.
+// Valid values are 2, 4, or 8 bytes. Any other value will cause a panic.
 func WithLengthSize(size int) FileOption {
+	if size != 2 && size != 4 && size != 8 {
+		panic("WithLengthSize: size must be 2, 4, or 8")
+	}
 	return func(o *fileOptions) {
-		if size == 2 || size == 4 || size == 8 {
-			o.lengthSize = size
-		}
+		o.lengthSize = size
 	}
 }
 
@@ -75,12 +79,15 @@ func WithMaxDims(dims ...uint64) DatasetOption {
 	}
 }
 
-// WithCompression sets the compression level (1-9, 0 = none).
+// WithCompression sets the compression level.
+// Valid values are 0 (no compression) through 9 (maximum compression).
+// Any value outside this range will cause a panic.
 func WithCompression(level int) DatasetOption {
+	if level < 0 || level > 9 {
+		panic("WithCompression: level must be 0-9")
+	}
 	return func(o *datasetOptions) {
-		if level >= 0 && level <= 9 {
-			o.compressionLvl = level
-		}
+		o.compressionLvl = level
 	}
 }
 

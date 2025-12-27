@@ -215,10 +215,11 @@ func (a *Allocator) Validate() error {
 
 // AllocFunc returns an allocation function compatible with existing code.
 // This allows gradual migration from the simple closure-based allocator.
+// If a negative size is passed, the function returns 0 (safe no-op).
 func (a *Allocator) AllocFunc() func(size int64) uint64 {
 	return func(size int64) uint64 {
-		if size < 0 {
-			panic("negative allocation size")
+		if size <= 0 {
+			return 0
 		}
 		return a.Alloc(uint64(size))
 	}

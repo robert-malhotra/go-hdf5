@@ -15,6 +15,11 @@ type Layout interface {
 	// Read reads all data from the layout.
 	Read() ([]byte, error)
 
+	// ReadSlice reads a hyperslab (rectangular selection) of the dataset.
+	// start specifies the starting coordinates, count specifies elements per dimension.
+	// Returns the raw bytes for the selected region in row-major order.
+	ReadSlice(start, count []uint64) ([]byte, error)
+
 	// Class returns the layout class.
 	Class() message.LayoutClass
 }
@@ -33,7 +38,7 @@ func New(
 
 	switch layout.Class {
 	case message.LayoutCompact:
-		return NewCompact(layout), nil
+		return NewCompact(layout, dataspace, datatype), nil
 
 	case message.LayoutContiguous:
 		return NewContiguous(layout, dataspace, datatype, reader), nil
@@ -52,6 +57,78 @@ func calculateDataSize(dataspace *message.Dataspace, datatype *message.Datatype)
 		return 0
 	}
 	return dataspace.NumElements() * uint64(datatype.Size)
+}
+
+// extractHyperslab extracts a rectangular region from data stored in row-major order.
+// dims is the full dataset dimensions, start and count specify the selection.
+func extractHyperslab(data []byte, dims []uint64, start, count []uint64, elementSize uint64) ([]byte, error) {
+	ndims := len(dims)
+	if ndims == 0 {
+		return nil, fmt.Errorf("cannot extract hyperslab from scalar dataset")
+	}
+
+	// Calculate total elements in result
+	totalElements := uint64(1)
+	for _, c := range count {
+		totalElements *= c
+	}
+
+	result := make([]byte, totalElements*elementSize)
+
+	// Calculate strides for source data (row-major order)
+	srcStrides := make([]uint64, ndims)
+	srcStrides[ndims-1] = elementSize
+	for d := ndims - 2; d >= 0; d-- {
+		srcStrides[d] = srcStrides[d+1] * dims[d+1]
+	}
+
+	// Calculate strides for result data
+	dstStrides := make([]uint64, ndims)
+	dstStrides[ndims-1] = elementSize
+	for d := ndims - 2; d >= 0; d-- {
+		dstStrides[d] = dstStrides[d+1] * count[d+1]
+	}
+
+	// Copy data recursively
+	return result, extractHyperslabRecursive(data, result, dims, start, count,
+		srcStrides, dstStrides, 0, 0, 0, ndims)
+}
+
+// extractHyperslabRecursive recursively copies hyperslab data.
+func extractHyperslabRecursive(
+	src, dst []byte,
+	dims, start, count []uint64,
+	srcStrides, dstStrides []uint64,
+	srcOffset, dstOffset uint64,
+	dim, ndims int,
+) error {
+	if dim == ndims-1 {
+		// Innermost dimension - copy contiguously
+		rowBytes := count[dim] * srcStrides[dim]
+		srcStart := srcOffset + start[dim]*srcStrides[dim]
+		if srcStart+rowBytes <= uint64(len(src)) && dstOffset+rowBytes <= uint64(len(dst)) {
+			copy(dst[dstOffset:dstOffset+rowBytes], src[srcStart:srcStart+rowBytes])
+		}
+		return nil
+	}
+
+	// Recurse for each position in this dimension
+	for i := uint64(0); i < count[dim]; i++ {
+		newSrcOffset := srcOffset + (start[dim]+i)*srcStrides[dim]
+		newDstOffset := dstOffset + i*dstStrides[dim]
+
+		err := extractHyperslabRecursive(
+			src, dst, dims, start, count,
+			srcStrides, dstStrides,
+			newSrcOffset, newDstOffset,
+			dim+1, ndims,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Chunked represents chunked storage layout.
@@ -497,6 +574,46 @@ func (c *Chunked) copyChunkMultiDim(
 }
 
 // copyChunkRecursive recursively copies chunk data for each dimension.
+//
+// This algorithm handles the mapping between chunk-local coordinates and
+// dataset-global coordinates for multi-dimensional arrays. The key insight
+// is that while the chunk data is stored as a contiguous byte array, it
+// represents a multi-dimensional sub-region of the larger dataset array.
+//
+// # Algorithm Overview
+//
+// The algorithm works by dimension-by-dimension recursion:
+//
+//  1. For dimensions 0 through ndims-2, iterate over each position in the
+//     current dimension and recurse to the next dimension. At each step,
+//     calculate the byte offset in both the output buffer (using dataset
+//     strides and global coordinates) and the chunk buffer (using chunk
+//     strides and local coordinates).
+//
+//  2. At the innermost dimension (ndims-1), perform a contiguous memory
+//     copy of the entire row, since elements along the innermost dimension
+//     are stored contiguously in row-major order.
+//
+// # Parameters
+//
+//   - output: Destination buffer for the entire dataset (row-major order)
+//   - chunkData: Source buffer containing decompressed chunk data
+//   - chunkOffset: Global coordinates of chunk's first element in dataset
+//   - dims: Dataset dimensions
+//   - actualChunkDims: Actual chunk dimensions (may be clipped at edges)
+//   - outputStrides: Byte stride for each dimension in the output buffer
+//   - chunkStrides: Byte stride for each dimension in the chunk buffer
+//   - outputIdx: Current byte offset in output (accumulated across dimensions)
+//   - chunkIdx: Current byte offset in chunk (accumulated across dimensions)
+//   - dim: Current dimension being processed (0 = outermost)
+//   - ndims: Total number of dimensions
+//
+// # Edge Chunk Handling
+//
+// When chunks extend beyond dataset boundaries (common for non-divisible
+// sizes), actualChunkDims will be smaller than the full chunk dimensions.
+// The algorithm naturally handles this by only iterating over the valid
+// portion of the chunk.
 func (c *Chunked) copyChunkRecursive(
 	output []byte,
 	chunkData []byte,
@@ -511,7 +628,9 @@ func (c *Chunked) copyChunkRecursive(
 	ndims int,
 ) error {
 	if dim == ndims-1 {
-		// Innermost dimension - copy contiguously
+		// Innermost dimension - copy contiguously.
+		// Elements along the innermost dimension are adjacent in memory,
+		// so we can copy them as a single block for efficiency.
 		rowBytes := actualChunkDims[dim] * outputStrides[dim]
 		// Add the chunk offset for the innermost dimension
 		startIdx := outputIdx + chunkOffset[dim]*outputStrides[dim]
@@ -521,7 +640,10 @@ func (c *Chunked) copyChunkRecursive(
 		return nil
 	}
 
-	// Recurse for each position in this dimension
+	// Recurse for each position in this dimension.
+	// For each position i in the current dimension:
+	// - The output offset advances by the dataset stride (position in global array)
+	// - The chunk offset advances by the chunk stride (position within chunk)
 	for i := uint64(0); i < actualChunkDims[dim]; i++ {
 		newOutputIdx := outputIdx + (chunkOffset[dim]+i)*outputStrides[dim]
 		newChunkIdx := chunkIdx + i*chunkStrides[dim]
@@ -923,4 +1045,276 @@ func (c *Chunked) readExtensibleArrayIndexBlock(addr uint64, idxBlkElmts, elemSi
 	}
 
 	return entries, nil
+}
+
+// ReadSlice reads a hyperslab from chunked storage.
+func (c *Chunked) ReadSlice(start, count []uint64) ([]byte, error) {
+	dims := c.dataspace.Dimensions
+	if len(dims) == 0 {
+		// Scalar dataset - shouldn't be chunked normally
+		dims = []uint64{1}
+	}
+
+	ndims := len(dims)
+	if len(start) != ndims || len(count) != ndims {
+		return nil, fmt.Errorf("start and count must have %d dimensions, got %d and %d",
+			ndims, len(start), len(count))
+	}
+
+	// Validate bounds
+	for d := 0; d < ndims; d++ {
+		if start[d]+count[d] > dims[d] {
+			return nil, fmt.Errorf("slice out of bounds: dimension %d, start=%d, count=%d, size=%d",
+				d, start[d], count[d], dims[d])
+		}
+	}
+
+	// Get chunk dimensions
+	chunkDims := c.layout.ChunkDims
+	if len(chunkDims) == 0 {
+		return nil, fmt.Errorf("chunked layout has no chunk dimensions")
+	}
+	if len(chunkDims) > ndims {
+		chunkDims = chunkDims[:ndims]
+	}
+
+	elementSize := uint64(c.datatype.Size)
+
+	// Calculate total output size
+	totalElements := uint64(1)
+	for _, cnt := range count {
+		totalElements *= cnt
+	}
+	output := make([]byte, totalElements*elementSize)
+
+	// Calculate chunk size in bytes (uncompressed)
+	chunkElements := uint64(1)
+	for _, d := range chunkDims {
+		chunkElements *= uint64(d)
+	}
+	chunkSizeBytes := chunkElements * elementSize
+
+	// Detect chunk index type and get all chunks
+	indexType, err := c.detectChunkIndexType()
+	if err != nil {
+		return nil, fmt.Errorf("detecting chunk index type: %w", err)
+	}
+
+	// Get all chunk entries
+	var entries []btree.ChunkEntry
+	switch indexType {
+	case "single":
+		// Single chunk - read and extract
+		data, err := c.readSingleChunk(calculateDataSize(c.dataspace, c.datatype))
+		if err != nil {
+			return nil, err
+		}
+		return extractHyperslab(data, dims, start, count, elementSize)
+
+	case "btree_v1":
+		chunkIndex, err := btree.ReadChunkIndex(c.reader, c.layout.ChunkIndexAddr, ndims)
+		if err != nil {
+			return nil, err
+		}
+		entries = chunkIndex.Entries
+
+	case "fixed_array":
+		entries, err = c.readFixedArrayIndex(dims, chunkDims)
+		if err != nil {
+			return nil, err
+		}
+
+	case "extensible_array":
+		entries, err = c.readExtensibleArrayIndex(dims, chunkDims)
+		if err != nil {
+			return nil, err
+		}
+
+	case "btree_v2":
+		chunkIndex, err := btree.ReadChunkIndexV2(c.reader, c.layout.ChunkIndexAddr, ndims)
+		if err != nil {
+			return nil, err
+		}
+		entries = chunkIndex.Entries
+
+	default:
+		return nil, fmt.Errorf("unsupported chunk index type: %s", indexType)
+	}
+
+	// Calculate the end of the selection
+	selEnd := make([]uint64, ndims)
+	for d := 0; d < ndims; d++ {
+		selEnd[d] = start[d] + count[d]
+	}
+
+	// Process each chunk that overlaps with the selection
+	for _, entry := range entries {
+		if entry.Address == 0 || entry.Address == 0xFFFFFFFFFFFFFFFF {
+			continue
+		}
+
+		// Calculate chunk boundaries
+		chunkStart := entry.Offset
+		chunkEnd := make([]uint64, ndims)
+		for d := 0; d < ndims; d++ {
+			chunkEnd[d] = chunkStart[d] + uint64(chunkDims[d])
+			if chunkEnd[d] > dims[d] {
+				chunkEnd[d] = dims[d]
+			}
+		}
+
+		// Check if chunk overlaps with selection
+		overlaps := true
+		for d := 0; d < ndims; d++ {
+			if chunkEnd[d] <= start[d] || chunkStart[d] >= selEnd[d] {
+				overlaps = false
+				break
+			}
+		}
+		if !overlaps {
+			continue
+		}
+
+		// Read and decompress chunk
+		chunkEntry := entry
+		if chunkEntry.Size == 0 {
+			chunkEntry.Size = uint32(chunkSizeBytes)
+		}
+		chunkData, err := c.readChunkData(chunkEntry)
+		if err != nil {
+			return nil, fmt.Errorf("reading chunk at offset %v: %w", entry.Offset, err)
+		}
+
+		if c.pipeline != nil && !c.pipeline.Empty() {
+			chunkData, err = c.pipeline.Decode(chunkData, entry.FilterMask)
+			if err != nil {
+				return nil, fmt.Errorf("decoding chunk at offset %v: %w", entry.Offset, err)
+			}
+		}
+
+		// Copy the overlapping portion to output
+		err = c.copyChunkToSlice(output, chunkData, entry.Offset, dims, chunkDims,
+			start, count, elementSize)
+		if err != nil {
+			return nil, fmt.Errorf("copying chunk at offset %v: %w", entry.Offset, err)
+		}
+	}
+
+	return output, nil
+}
+
+// copyChunkToSlice copies the overlapping portion of a chunk to the output slice.
+func (c *Chunked) copyChunkToSlice(
+	output []byte,
+	chunkData []byte,
+	chunkOffset []uint64,
+	dims []uint64,
+	chunkDims []uint32,
+	selStart, selCount []uint64,
+	elementSize uint64,
+) error {
+	ndims := len(dims)
+
+	// Calculate actual chunk dimensions (may be clipped at edges)
+	actualChunkDims := make([]uint64, ndims)
+	for d := 0; d < ndims; d++ {
+		actualChunkDims[d] = uint64(chunkDims[d])
+		if chunkOffset[d]+actualChunkDims[d] > dims[d] {
+			actualChunkDims[d] = dims[d] - chunkOffset[d]
+		}
+	}
+
+	// Calculate the overlap region
+	overlapStart := make([]uint64, ndims) // In dataset coordinates
+	overlapEnd := make([]uint64, ndims)
+	for d := 0; d < ndims; d++ {
+		// Start of overlap in dataset coords
+		if selStart[d] > chunkOffset[d] {
+			overlapStart[d] = selStart[d]
+		} else {
+			overlapStart[d] = chunkOffset[d]
+		}
+		// End of overlap in dataset coords
+		selEnd := selStart[d] + selCount[d]
+		chunkEnd := chunkOffset[d] + actualChunkDims[d]
+		if selEnd < chunkEnd {
+			overlapEnd[d] = selEnd
+		} else {
+			overlapEnd[d] = chunkEnd
+		}
+	}
+
+	// Calculate strides for chunk data
+	chunkStrides := make([]uint64, ndims)
+	chunkStrides[ndims-1] = elementSize
+	for d := ndims - 2; d >= 0; d-- {
+		chunkStrides[d] = chunkStrides[d+1] * uint64(chunkDims[d+1])
+	}
+
+	// Calculate strides for output
+	outputStrides := make([]uint64, ndims)
+	outputStrides[ndims-1] = elementSize
+	for d := ndims - 2; d >= 0; d-- {
+		outputStrides[d] = outputStrides[d+1] * selCount[d+1]
+	}
+
+	// Copy data recursively
+	return c.copyOverlapRecursive(
+		output, chunkData,
+		overlapStart, overlapEnd,
+		chunkOffset, selStart,
+		chunkStrides, outputStrides,
+		0, 0, 0, ndims,
+	)
+}
+
+// copyOverlapRecursive recursively copies overlap region from chunk to output.
+func (c *Chunked) copyOverlapRecursive(
+	output, chunkData []byte,
+	overlapStart, overlapEnd []uint64,
+	chunkOffset, selStart []uint64,
+	chunkStrides, outputStrides []uint64,
+	chunkIdx, outputIdx uint64,
+	dim, ndims int,
+) error {
+	if dim == ndims-1 {
+		// Innermost dimension - copy contiguously
+		rowLen := overlapEnd[dim] - overlapStart[dim]
+		rowBytes := rowLen * chunkStrides[dim]
+
+		// Calculate offsets within chunk and output
+		chunkPos := overlapStart[dim] - chunkOffset[dim]
+		outputPos := overlapStart[dim] - selStart[dim]
+
+		srcStart := chunkIdx + chunkPos*chunkStrides[dim]
+		dstStart := outputIdx + outputPos*outputStrides[dim]
+
+		if srcStart+rowBytes <= uint64(len(chunkData)) && dstStart+rowBytes <= uint64(len(output)) {
+			copy(output[dstStart:dstStart+rowBytes], chunkData[srcStart:srcStart+rowBytes])
+		}
+		return nil
+	}
+
+	// Recurse for each position in this dimension
+	for i := overlapStart[dim]; i < overlapEnd[dim]; i++ {
+		chunkPos := i - chunkOffset[dim]
+		outputPos := i - selStart[dim]
+
+		newChunkIdx := chunkIdx + chunkPos*chunkStrides[dim]
+		newOutputIdx := outputIdx + outputPos*outputStrides[dim]
+
+		err := c.copyOverlapRecursive(
+			output, chunkData,
+			overlapStart, overlapEnd,
+			chunkOffset, selStart,
+			chunkStrides, outputStrides,
+			newChunkIdx, newOutputIdx,
+			dim+1, ndims,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
